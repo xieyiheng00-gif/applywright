@@ -31,7 +31,9 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   salary) from documents or names. Ask; "decline" is a valid EEO answer.
 - Tier-3 answers: use only the `ai_task` + `ai_context` that `resolve`/`context` return. Do not load
   the whole profile; the point of jobfill is to keep those prompts small. Write with the playbook the
-  task names (`ai_context.writing`) and run `answer check` before `answer record`.
+  task names (`ai_context.writing`) and the candidate's `job-answer-writer` skill (load
+  `anthropic-skills:job-answer-writer` before the first answer; `/fill` step 4 says how it fits these
+  rules), and run `answer check` before `answer record`.
 - Ground every written claim in stored data. If the data cannot support an answer, ask.
 - Never submit an application without the candidate's explicit confirmation. Never type passwords
   or verification codes, never solve CAPTCHAs. Account sign-up/sign-in is `python -m jobfill login`,

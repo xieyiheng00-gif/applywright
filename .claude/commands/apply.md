@@ -62,7 +62,7 @@ it the same way and replace the upload with `apply set --field <resume field> --
      `set_with` command. Either way jobfill remembers that pick for that answer and uses it on later
      forms that offer it (`python -m jobfill choice list` shows them, `choice forget` drops one).
    - `needs_ai` - write each answer from its task, its playbook and the shared `ai_context` exactly as
-     in `/fill` step 4, save it to `data/answers/app<ID>_<question_id>.txt`, run `answer check` and fix
+     in `/fill` step 4 (with the `job-answer-writer` skill, inside jobfill's rules), save it to `data/answers/app<ID>_<question_id>.txt`, run `answer check` and fix
      what it reports, then record it:
      `python -m jobfill answer record --app <ID> --question <question_id> --label "<the question's label on the form>" --file data/answers/app<ID>_<question_id>.txt`
      A task with `examples` (why us, why this role, product / mission, why you are leaving) is not
