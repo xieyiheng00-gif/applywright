@@ -63,6 +63,10 @@ The output includes `app_id`, company, role, and earlier applications to the sam
      (the candidate's real experience matched to the posting), put them in the batched numbered message
      for the candidate to pick, edit or replace, then record the chosen one (`/fill` step 4). If the
      posting was not saved (`relevant.note`), save it first so the examples can tie to it.
+     A task with `question_id: open_ended_custom` is an open question the bank does not know yet; it is
+     written like any other (optional or not: a blank essay on an application reads as no interest), and
+     you also classify its label with the `/learn` rules (`python -m jobfill pending` has its id) so plain
+     Python recognizes it next time.
    - `fill_failed` - failed once. The next `apply fill` tries it once more by itself (often a dropdown
      that loaded slowly); nothing to do yet.
    - `handoff` - failed twice with the same value, so plain Python stops trying it (retrying a

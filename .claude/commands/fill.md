@@ -37,6 +37,8 @@ Work in this order, so the candidate is asked everything in **one** message:
   `python -m jobfill learn <id> --alias-of <question_id>`; if none is, treat it as `unmatched`.
 - `unmatched`: classify it with the `/learn` decision rules. A new reusable fact you define there
   becomes a `needs_user` item on the next resolve.
+- `needs_ai` with `question_id: open_ended_custom`: an open question the bank does not know. It is still
+  written in step 4 (also when the field is optional); classify its label with the `/learn` rules too.
 - Resolve again.
 
 **3b. Ask the candidate once.** Put every `needs_user` item from that resolve into ONE numbered

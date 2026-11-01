@@ -1325,10 +1325,12 @@ QUESTIONS = [
     Q("motivation_drive", 3, "narrative", "What motivates you?",
       ["what motivates you", "what drives you", "what are you passionate about", "what motivates you at work",
        "what gets you excited about your work", "what kind of work energizes you", "what inspires you",
-       "what motivates you professionally", "what drives you in your career"],
+       "what motivates you professionally", "what drives you in your career", "what do you optimize for",
+       "what do you optimize for in life", "what are you optimizing for"],
       answer=ai("adapt", "application", ["motivations", "projects", "experience"],
                 "The real motivation from the stored motivations, shown through one moment from their work.",
-                playbook="values")),
+                playbook="values"),
+      patterns=[P(r"\bwhat (do|are) you optimi[sz](e|ing) for\b", 4)]),
     Q("problem_approach", 3, "narrative", "How do you approach a problem you have not seen before?",
       ["how do you approach a problem you have not seen before", "how do you approach solving a new problem",
        "walk us through your problem solving process", "describe your problem solving approach",
@@ -1442,6 +1444,5 @@ QUESTIONS = [
       [],
       answer=ai("unique", "application", ["summary", "experience", "projects", "skills"],
                 "This question is not in the bank yet. Answer it from the candidate data and the posting; "
-                "then classify it with `jobfill learn` so it is recognized next time.", optional="skip",
-                playbook="direct")),
+                "then classify it with `jobfill learn` so it is recognized next time.", playbook="direct")),
 ]

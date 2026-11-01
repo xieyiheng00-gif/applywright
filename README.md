@@ -181,7 +181,10 @@ the shared `ai_context`), `needs_user` (ask once, store with the given command),
 
 Open questions ("Why us?", "Tell us about yourself", "What did you learn recently?", "Tell us about
 a time...", "How do you use AI in your work?", first 90 days, values, gaps) are recognized like any
-other question, then written per application. Each `needs_ai` task names a **playbook**, the
+other question, then written per application, also when the form marks them optional (a blank essay
+reads as no interest). Only "anything else?", "questions for us?", cover letters and employment gaps
+stay blank unless the field is required. An open question the bank does not know is still written
+(`open_ended_custom`) and queued for `/learn`. Each `needs_ai` task names a **playbook**, the
 technique recruiters expect for that question type (STAR for behavioral, hook -> link -> contribution
 for "why us", present -> past -> future for "about you", gap -> method -> proof for learning...).
 `ai_context.writing` carries the shared style rules, only the playbooks used on that form, and a
