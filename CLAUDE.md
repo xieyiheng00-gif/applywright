@@ -58,6 +58,9 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
 - Lists never get a look-alike: a stored name (school, field of study) with no exact option is left
   empty and asked (`needs_user` with `set_with`). The candidate's pick, made in the window or through
   `apply set`, goes to `learned_choices` and is reused where a later form offers it (`choice list`).
+- Resume per application: `jobfill/resumes.py` picks a tailored CV under `documents/resume/` by file name
+  (company, then role words) at `apply start`; `applications.resume` holds it (`--resume` overrides) and
+  the `resume_file` rule falls back to `documents.resume_path`. Tested in `tests/test_resumes.py`.
 - Result record: every question of an application is a row in `answers` (status, source, fill);
   `jobfill/report.py` turns it into `data/applications/app<ID>_*.md|json` and `app stats`.
 - Built-in catalog: `jobfill/catalog/` (`facts.py`, `records.py`, `choices.py`, `questions.py`).

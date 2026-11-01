@@ -330,6 +330,9 @@ class TestWorkdayExperience(unittest.TestCase):
         report, _ = self.fill(page)
         self.assertEqual(page.evaluate("() => window.uploads"), 0)
         self.assertEqual(self.entry(report, "Resume/CV")["fill"], "kept (already uploaded: resume_2026.pdf)")
+        # The record names the file the form holds, not the default resume it would have uploaded.
+        row = next(a for a in self.store.answers(self.app) if a["label"] == "Resume/CV")
+        self.assertEqual((row["value"], row["source"]), ("resume_2026.pdf", "user"))
 
 
 @unittest.skipUnless(importlib.util.find_spec("playwright"), "Playwright not installed")

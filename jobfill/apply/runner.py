@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 
 from .. import report as results
+from .. import resumes
 from ..db import ROOT
 from ..resolver import Resolver
 from ..text import normalize
@@ -56,7 +57,7 @@ NEXT_STEP = {
 # --------------------------------------------------------------------------- start
 
 def start(store, data_dir: Path, url: str, *, company=None, role=None, source=None, referrer=None,
-          ats=None, network=True) -> dict:
+          ats=None, network=True, resume=None) -> dict:
     d: Detection = detect(url, network=network)
     if ats:   # the agent looked at the page and decided
         d.ats = ats
@@ -74,8 +75,12 @@ def start(store, data_dir: Path, url: str, *, company=None, role=None, source=No
     if not company:
         raise ApplyError("Could not tell the company name; pass --company.", detection=d.to_dict())
     posting_file = None
+    try:
+        cv = resumes.choose(store, ROOT, company, role or d.role, resume)
+    except FileNotFoundError as e:
+        raise ApplyError(str(e), detection=d.to_dict())
     app_id = store.start_application(company, role or d.role, url=url, ats=d.ats, source=source, referrer=referrer,
-                                     posting=d.posting,
+                                     posting=d.posting, resume=cv["file"],
                                      country=None)
     if d.posting:
         posting_file = state_dir(data_dir, app_id) / "posting.txt"
@@ -85,6 +90,7 @@ def start(store, data_dir: Path, url: str, *, company=None, role=None, source=No
     prior = store.same_company_apps(company, exclude_id=app_id)
     out.update({"app_id": app_id, "company": company, "role": role or d.role, "location": d.location,
                 "posting_file": str(posting_file) if posting_file else None,
+                "resume": {k: v for k, v in cv.items() if v is not None},
                 "previous_applications_to_company": [{"id": a["id"], "role": a["role"], "status": a["status"]}
                                                      for a in prior],
                 "next": NEXT_STEP[d.handler].format(id=app_id)})
@@ -152,6 +158,13 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
                 elif f["kind"] == "file" and not is_empty(f):
                     # Uploading again would add a second copy (Workday keeps every file), never replace it.
                     entry["fill"] = f"kept (already uploaded: {f['value']})"
+                    if Path(str(r["value"])).name != f["value"]:
+                        # Another file than the resolved one (set by hand or `apply set`): the record names it.
+                        entry["value"] = f["value"]
+                        store.record_answer(app_id, _key(store, f), f["label"], f["value"],
+                                            question_id=r.get("question_id"), source="user", tier=r.get("tier"),
+                                            status="filled", fill=entry["fill"], section=f.get("section"),
+                                            idx=f.get("index"))
                 elif not is_empty(f) and not (overwrite is True or (overwrite == "own" and owner == "jobfill")):
                     entry["fill"] = "kept (already has a value)"
                 elif (tried := store.fill_attempts(app_id, _key(store, f), r["value"])) >= MAX_FILL_ATTEMPTS:

@@ -532,7 +532,7 @@ class Store:
     # ------------------------------------------------------------------ applications & answer log
     def start_application(self, company: str, role: str | None = None, **extra) -> int:
         cols = {k: v for k, v in extra.items()
-                if k in {"url", "ats", "country", "source", "referrer", "posting", "notes"} and v}
+                if k in {"url", "ats", "country", "source", "referrer", "posting", "notes", "resume"} and v}
         ts = now()
         names = ["company", "role", *cols, "created_at", "updated_at"]
         with self.conn:
@@ -552,7 +552,7 @@ class Store:
             "SELECT id, company, role, status, url, created_at FROM applications ORDER BY id DESC")]
 
     def update_application(self, app_id: int, **fields) -> dict:
-        allowed = {"role", "url", "ats", "country", "source", "referrer", "posting", "notes", "status"}
+        allowed = {"role", "url", "ats", "country", "source", "referrer", "posting", "notes", "status", "resume"}
         fields = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if fields:
             with self.conn:

@@ -23,6 +23,13 @@ If `$ARGUMENTS` is empty, ask for the job URL and stop.
 The output includes `app_id`, company, role, and earlier applications to the same company
 (mention those). The posting text is saved for tier-3 answers.
 
+`resume` says which CV this application uploads: a tailored CV from `documents/resume/` whose file name
+names the company and matches the role, a `--resume <file>` the candidate gave, or the default
+(`documents.resume_path`). Tell the candidate which file it is. If it lists `cvs_for_company` (CVs for this
+company, none clearly matching the role), ask whether one of them fits and set it with
+`python -m jobfill app update <ID> --resume "<file>"` before filling. To swap the file after a fill, set
+it the same way and replace the upload with `apply set --field <resume field> --value "<file>"`.
+
 ## Step 2: Python filler (Greenhouse, Lever, iCIMS, Ashby, Workday)
 
 1. `python -m jobfill apply fill --app <ID>` opens a visible Chromium window (it stays open between

@@ -88,6 +88,13 @@ python -m playwright install chromium
 | Company portals (Amazon, TikTok, Google, ...) and other ATSs (SmartRecruiters, Workable, ...) | the agent in the built-in browser; portals that need an account use the jobfill window (`--ats generic`) so the login carries over | answers still come from `jobfill resolve` |
 | LinkedIn / Indeed listings | the agent follows the employer's apply link first | |
 
+**Tailored CVs.** Keep one CV per posting anywhere under `documents/resume/` (e.g.
+`documents/resume/tailored cv/main_acme_labs_research_engineer_pre_training.pdf`). `apply start`
+picks the one whose file name contains the company and best matches the role, and reports it under
+`resume`; with no clear match (another company, or two CVs that fit equally) the application uploads
+`documents.resume_path`. Set or change one by hand with `apply start ... --resume <file>` or
+`app update <ID> --resume <file>`. The result record names the file the form actually holds.
+
 The filler never solves CAPTCHAs, never accepts terms without a standing consent, and never submits:
 `apply submit --confirm` runs only after the candidate says so (or they click Submit themselves).
 `apply fill --dry-run` previews what would be filled without typing.

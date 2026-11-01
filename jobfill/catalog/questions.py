@@ -958,7 +958,7 @@ QUESTIONS = [
     Q("resume_file", 2, "documents", "Resume / CV",
       ["resume", "resume cv", "cv", "upload resume", "attach resume", "upload your resume", "resume upload",
        "curriculum vitae", "attach your resume cv", "resume or cv", "upload cv", "cv resume"],
-      answer=fact("documents.resume_path"), kinds=FILE),
+      answer=derive("resume_file"), kinds=FILE),
     Q("transcript_file", 2, "documents", "Transcript",
       ["transcript", "unofficial transcript", "upload transcript", "academic transcript", "transcripts",
        "official transcript", "attach transcript"],

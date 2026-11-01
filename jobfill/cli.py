@@ -219,7 +219,8 @@ def cmd_app(store, args):
     if args.action == "start":
         posting = Path(args.posting_file).read_text(encoding="utf-8") if args.posting_file else None
         app_id = store.start_application(args.company, args.role, url=args.url, ats=args.ats, country=args.country,
-                                         source=args.source, referrer=args.referrer, posting=posting, notes=args.notes)
+                                         source=args.source, referrer=args.referrer, posting=posting, notes=args.notes,
+                                         resume=_resume_arg(store, args.resume))
         prior = store.same_company_apps(args.company, exclude_id=app_id)
         _out({"id": app_id, "company": args.company, "role": args.role,
               "previous_applications_to_company": [{"id": a["id"], "role": a["role"], "status": a["status"]} for a in prior]})
@@ -233,7 +234,7 @@ def cmd_app(store, args):
         posting = Path(args.posting_file).read_text(encoding="utf-8") if args.posting_file else None
         app = store.update_application(args.id, role=args.role, url=args.url, ats=args.ats, country=args.country,
                                        source=args.source, referrer=args.referrer, posting=posting, notes=args.notes,
-                                       status=args.status)
+                                       status=args.status, resume=_resume_arg(store, args.resume))
         app["posting"] = (app["posting"] or "")[:200]
         _out({**app, "record": report.write(store, _data_dir(args), args.id)["markdown"]})
     elif args.action == "report":
@@ -241,6 +242,17 @@ def cmd_app(store, args):
         _out(report.markdown(report.build(store, args.id)) if args.print else written)
     elif args.action == "stats":
         _out(report.stats(store))
+
+
+def _resume_arg(store, path: str | None) -> str | None:
+    """--resume: the file must exist; stored relative to the project folder, like documents.resume_path."""
+    if not path:
+        return None
+    from . import resumes
+    try:
+        return resumes.choose(store, db.ROOT, "", None, path)["file"]
+    except FileNotFoundError as e:
+        raise ValidationError(str(e))
 
 
 def _data_dir(args) -> Path:
@@ -258,7 +270,7 @@ def cmd_apply(store, args):
         if args.action == "start":
             return _out(runner.start(store, data_dir, args.url, company=args.company, role=args.role,
                                      source=args.source, referrer=args.referrer, ats=args.ats,
-                                     network=not args.no_network))
+                                     network=not args.no_network, resume=args.resume))
         if args.action == "fill":
             return _out(runner.fill_command(store, data_dir, args.app, overwrite=args.overwrite,
                                             headless=args.headless, files=not args.no_files,
@@ -575,6 +587,7 @@ def build_parser() -> argparse.ArgumentParser:
             x.add_argument("id", type=int); x.add_argument("--status")
         for opt in ("--role", "--url", "--ats", "--country", "--source", "--referrer", "--posting-file", "--notes"):
             x.add_argument(opt)
+        x.add_argument("--resume", help="CV file this application uploads instead of documents.resume_path")
     ap.add_parser("list")
     x = ap.add_parser("show"); x.add_argument("id", type=int)
     x = ap.add_parser("report", help="write the result record: every question, its answer, who answered it")
@@ -590,6 +603,8 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("url"); x.add_argument("--company"); x.add_argument("--role"); x.add_argument("--source")
     x.add_argument("--referrer"); x.add_argument("--no-network", action="store_true")
     x.add_argument("--ats", help="override detection after checking the page (greenhouse|lever|icims|custom|...)")
+    x.add_argument("--resume", help="CV for this application (default: a tailored CV under documents/resume/ "
+                                    "named after the company and role, else documents.resume_path)")
     for name, helptext in (("fill", "fill the form from the database (Greenhouse/Lever/iCIMS/Ashby)"),
                            ("set", "type one value into one field"), ("next", "click Next/Continue (never submit)"),
                            ("submit", "click the final submit button; requires --confirm"),
