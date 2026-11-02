@@ -165,6 +165,19 @@ class TestFiller(unittest.TestCase):
         phone = next(v for v in report["fields"].values() if v["label"] == "Phone")
         self.assertTrue(phone["fill"].startswith("kept"))
 
+    def test_field_instructions_are_read_and_followed(self):
+        from jobfill.apply.forms import extract
+        page, report, summary = self.run_fixture("described_like.html", "greenhouse", "Acme Robotics")
+        desc = {f["label"]: f.get("description") for f in extract(page.main_frame, None)}
+        self.assertIn('please enter "None"', desc["Current Company*"])            # aria-describedby, error slot skipped
+        self.assertIn("150 words", desc["Why Acme Robotics?"])                     # Ashby description in the field block
+        self.assertIsNone(desc["What is your favorite color?"])                    # never the neighbour's
+        # No current employer (only an internship): the form's own "enter None" is the answer.
+        self.assertEqual((page.input_value("#q_company"), page.input_value("#q_title")), ("None", "None"))
+        # The writing task carries the field's instructions.
+        why = next(t for t in summary["needs_ai"] if t["question"] == "Why Acme Robotics?")
+        self.assertIn("150 words", why["instructions"])
+
     def test_ashby_like_form(self):
         page, report, summary = self.run_fixture("ashby_like.html", "ashby", "Acme AI")
         by_label = {v["label"]: v for v in report["fields"].values()}

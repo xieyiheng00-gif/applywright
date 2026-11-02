@@ -12,7 +12,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-PYTHON_SOURCES = ("fact:", "template", "derive:", "record:")
+PYTHON_SOURCES = ("fact:", "template", "derive:", "record:", "form:")
 OPEN = {"needs_ai": "needs an AI-written answer", "needs_user": "needs your answer",
         "uncertain": "new question (unclassified)", "unmatched": "new question (unclassified)"}
 

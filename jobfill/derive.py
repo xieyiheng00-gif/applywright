@@ -818,3 +818,12 @@ def was_referred(ctx):
 @rule
 def referrer_name(ctx):
     return Answer(ctx.app.get("referrer") if ctx.app else None)
+
+
+# ---------------------------------------------------------------- documents
+
+@rule
+def resume_file(ctx):
+    """The CV set for this application (tailored to the posting), else the default resume."""
+    own = ctx.app.get("resume") if ctx.app else None
+    return Answer(own) if own else Answer(ctx.fact("documents.resume_path"), source="fact:documents.resume_path")

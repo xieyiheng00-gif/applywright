@@ -102,5 +102,41 @@ class TestRealLaunch(unittest.TestCase):
         self.assertFalse(browser.alive(state["port"]))
 
 
+@unittest.skipUnless(importlib.util.find_spec("playwright"), "Playwright not installed")
+class TestFindPage(unittest.TestCase):
+    """Each application keeps its own tab, also when every job is on one host (jobs.ashbyhq.com)."""
+
+    def setUp(self):
+        from playwright.sync_api import sync_playwright
+        self.pw = sync_playwright().start()
+        self.addCleanup(self.pw.stop)
+        b = self.pw.chromium.launch()
+        self.addCleanup(b.close)
+        self.ctx = b.new_context()
+        self.form = (Path(__file__).parent / "fixtures" / "ashby_like.html").as_uri()
+
+    def tab(self, name=None):
+        page = self.ctx.new_page()
+        page.goto(self.form)
+        if name:
+            page.evaluate("(n) => { window.name = n; }", name)
+        return page
+
+    def test_another_applications_tab_is_never_taken(self):
+        other = self.tab(browser.TAG_PREFIX + "6")
+        page, fresh = browser.find_page(self.ctx, browser.TAG_PREFIX + "7", self.form)
+        self.assertIsNot(page, other)
+        self.assertTrue(fresh)
+        self.assertEqual(other.evaluate("() => window.name"), browser.TAG_PREFIX + "6")
+
+    def test_own_tab_then_an_untagged_tab_on_the_same_site(self):
+        self.tab(browser.TAG_PREFIX + "6")
+        mine = self.tab()   # opened by the candidate
+        page, fresh = browser.find_page(self.ctx, browser.TAG_PREFIX + "7", self.form)
+        self.assertIs(page, mine)
+        self.assertFalse(fresh)
+        self.assertIs(browser.find_page(self.ctx, browser.TAG_PREFIX + "7", self.form)[0], mine)
+
+
 if __name__ == "__main__":
     unittest.main()

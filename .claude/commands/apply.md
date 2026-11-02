@@ -23,6 +23,13 @@ If `$ARGUMENTS` is empty, ask for the job URL and stop.
 The output includes `app_id`, company, role, and earlier applications to the same company
 (mention those). The posting text is saved for tier-3 answers.
 
+`resume` says which CV this application uploads: a tailored CV from `documents/resume/` whose file name
+names the company and matches the role, a `--resume <file>` the candidate gave, or the default
+(`documents.resume_path`). Tell the candidate which file it is. If it lists `cvs_for_company` (CVs for this
+company, none clearly matching the role), ask whether one of them fits and set it with
+`python -m jobfill app update <ID> --resume "<file>"` before filling. To swap the file after a fill, set
+it the same way and replace the upload with `apply set --field <resume field> --value "<file>"`.
+
 ## Step 2: Python filler (Greenhouse, Lever, iCIMS, Ashby, Workday)
 
 1. `python -m jobfill apply fill --app <ID>` opens a visible Chromium window (it stays open between
@@ -46,7 +53,9 @@ The output includes `app_id`, company, role, and earlier applications to the sam
      batched question message with the exact wording; only if they want a standing answer, define a
      `consent.*` fact and learn the question onto it.
    - `needs_user` - collect them (plus prompts of facts you just defined) into ONE numbered message;
-     store the answers (`fact set`, `record add`).
+     store the answers (`fact set`, `record add`). An item with `instructions` carries the form's own
+     words under the field ("If it doesn't apply to you, please enter 'None'"): quote them in the
+     question and follow them; they outrank a suggestion from the profile.
      An item with `set_with` is a list (a school, a field of study, ...) that has no option exactly
      matching the stored answer: jobfill left it empty instead of picking a look-alike. Do not choose for
      the candidate. In the same numbered message, show their stored answer and the `choices` (the closest
@@ -55,7 +64,7 @@ The output includes `app_id`, company, role, and earlier applications to the sam
      `set_with` command. Either way jobfill remembers that pick for that answer and uses it on later
      forms that offer it (`python -m jobfill choice list` shows them, `choice forget` drops one).
    - `needs_ai` - write each answer from its task, its playbook and the shared `ai_context` exactly as
-     in `/fill` step 4, save it to `data/answers/app<ID>_<question_id>.txt`, run `answer check` and fix
+     in `/fill` step 4 (with the `job-answer-writer` skill, inside jobfill's rules), save it to `data/answers/app<ID>_<question_id>.txt`, run `answer check` and fix
      what it reports, then record it:
      `python -m jobfill answer record --app <ID> --question <question_id> --label "<the question's label on the form>" --file data/answers/app<ID>_<question_id>.txt`
      A task with `examples` (why us, why this role, product / mission, why you are leaving) is not
@@ -63,6 +72,10 @@ The output includes `app_id`, company, role, and earlier applications to the sam
      (the candidate's real experience matched to the posting), put them in the batched numbered message
      for the candidate to pick, edit or replace, then record the chosen one (`/fill` step 4). If the
      posting was not saved (`relevant.note`), save it first so the examples can tie to it.
+     A task with `question_id: open_ended_custom` is an open question the bank does not know yet; it is
+     written like any other (optional or not: a blank essay on an application reads as no interest), and
+     you also classify its label with the `/learn` rules (`python -m jobfill pending` has its id) so plain
+     Python recognizes it next time.
    - `fill_failed` - failed once. The next `apply fill` tries it once more by itself (often a dropdown
      that loaded slowly); nothing to do yet.
    - `handoff` - failed twice with the same value, so plain Python stops trying it (retrying a

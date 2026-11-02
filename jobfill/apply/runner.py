@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 
 from .. import report as results
+from .. import resumes
 from ..db import ROOT
 from ..resolver import Resolver
 from ..text import normalize
@@ -56,7 +57,7 @@ NEXT_STEP = {
 # --------------------------------------------------------------------------- start
 
 def start(store, data_dir: Path, url: str, *, company=None, role=None, source=None, referrer=None,
-          ats=None, network=True) -> dict:
+          ats=None, network=True, resume=None) -> dict:
     d: Detection = detect(url, network=network)
     if ats:   # the agent looked at the page and decided
         d.ats = ats
@@ -74,17 +75,22 @@ def start(store, data_dir: Path, url: str, *, company=None, role=None, source=No
     if not company:
         raise ApplyError("Could not tell the company name; pass --company.", detection=d.to_dict())
     posting_file = None
+    try:
+        cv = resumes.choose(store, ROOT, company, role or d.role, resume)
+    except FileNotFoundError as e:
+        raise ApplyError(str(e), detection=d.to_dict())
     app_id = store.start_application(company, role or d.role, url=url, ats=d.ats, source=source, referrer=referrer,
-                                     posting=d.posting,
+                                     posting=d.posting, resume=cv["file"],
                                      country=None)
     if d.posting:
         posting_file = state_dir(data_dir, app_id) / "posting.txt"
         posting_file.write_text(d.posting, encoding="utf-8")
     save_state(data_dir, app_id, {"url": url, "apply_url": d.apply_url or url, "ats": d.ats, "handler": d.handler,
-                                  "filled_once": False, "tag": f"jobfill-app-{app_id}"})
+                                  "filled_once": False, "tag": f"{browser.TAG_PREFIX}{app_id}"})
     prior = store.same_company_apps(company, exclude_id=app_id)
     out.update({"app_id": app_id, "company": company, "role": role or d.role, "location": d.location,
                 "posting_file": str(posting_file) if posting_file else None,
+                "resume": {k: v for k, v in cv.items() if v is not None},
                 "previous_applications_to_company": [{"id": a["id"], "role": a["role"], "status": a["status"]}
                                                      for a in prior],
                 "next": NEXT_STEP[d.handler].format(id=app_id)})
@@ -152,6 +158,13 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
                 elif f["kind"] == "file" and not is_empty(f):
                     # Uploading again would add a second copy (Workday keeps every file), never replace it.
                     entry["fill"] = f"kept (already uploaded: {f['value']})"
+                    if Path(str(r["value"])).name != f["value"]:
+                        # Another file than the resolved one (set by hand or `apply set`): the record names it.
+                        entry["value"] = f["value"]
+                        store.record_answer(app_id, _key(store, f), f["label"], f["value"],
+                                            question_id=r.get("question_id"), source="user", tier=r.get("tier"),
+                                            status="filled", fill=entry["fill"], section=f.get("section"),
+                                            idx=f.get("index"))
                 elif not is_empty(f) and not (overwrite is True or (overwrite == "own" and owner == "jobfill")):
                     entry["fill"] = "kept (already has a value)"
                 elif (tried := store.fill_attempts(app_id, _key(store, f), r["value"])) >= MAX_FILL_ATTEMPTS:
@@ -278,10 +291,14 @@ def summarize(report: dict, app_id: int) -> dict:
                         "choices": v.get("choices"), "store": v.get("store"), "sensitive": v.get("sensitive"),
                         # No exact option: the candidate picks in the window, or tells the agent (`apply set`).
                         "set_with": f"python -m jobfill apply set --app {app_id} --field {v['field']} "
-                                    "--value \"<their choice>\"" if v.get("no_exact") else None}
+                                    "--value \"<their choice>\"" if v.get("no_exact") else None,
+                        # The form's own words under the field ("enter None if it doesn't apply", "in USD").
+                        "instructions": v.get("instructions")}
                        for v in pick("needs_user")],
-        "uncertain": [{"field": v["field"], "label": v["label"], "candidates": v.get("candidates")} for v in pick("uncertain")],
-        "unmatched": [{"field": v["field"], "label": v["label"]} for v in pick("unmatched")],
+        "uncertain": [{"field": v["field"], "label": v["label"], "candidates": v.get("candidates"),
+                       "instructions": v.get("instructions")} for v in pick("uncertain")],
+        "unmatched": [{"field": v["field"], "label": v["label"], "instructions": v.get("instructions")}
+                      for v in pick("unmatched")],
         # Filled, but not completely (e.g. skills the menu has no entry for): the agent or candidate decides.
         "partly": [{"field": k, "label": v["label"], "note": v["note"]} for k, v in fields.items() if v.get("note")
                    and v.get("fill") == "ok"],

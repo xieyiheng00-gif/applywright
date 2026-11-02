@@ -30,7 +30,7 @@ from .matcher import Matcher
 from .store import DATE_FIELDS
 from .text import (choose_date_option, choose_enum_option, choose_range_option, choose_text_option,
                    classify_option, closest_options, date_part, detect_date_format, format_date, names_same, normalize,
-                   option_label, parse_date)
+                   not_applicable_answer, option_label, parse_date)
 
 LONG_TEXT_CHARS = 200
 CATCH_ALL = {"open_ended_custom", "bh_generic"}
@@ -105,6 +105,11 @@ class Resolver:
         field.setdefault("id", f"field_{position}")
         field.setdefault("type", "text")
         res = self._resolve_field(field)
+        # The form's own instructions under the field go to whoever answers it: the candidate or the agent.
+        if field.get("description") and res["status"] in ("needs_user", "needs_ai", "uncertain", "unmatched"):
+            res["instructions"] = field["description"]
+            if res["status"] == "needs_ai":
+                res["ai_task"]["instructions"] = field["description"]
         if self.log:
             self._log(field, res)
         return res
@@ -253,6 +258,12 @@ class Resolver:
         ftype = (field.get("type") or "text").lower()
         options = field.get("options") or []
         if value is None or value == "" or value == []:
+            # A rule found nothing to say (no current employer): that is the case the form's
+            # "If it doesn't apply to you, please enter 'None'" is written for.
+            na = None if options else not_applicable_answer(field.get("description"))
+            if na:
+                return {"status": "filled", "raw": na, "value": na, "source": "form:instructions",
+                        "note": f"Not applicable; the form says to enter '{na}'."}
             if field.get("required"):
                 return {"status": "needs_user", "ask": f"No stored answer for '{field.get('label')}'. What should it be?",
                         "source": ans.source}

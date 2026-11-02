@@ -88,6 +88,13 @@ python -m playwright install chromium
 | Company portals (Amazon, TikTok, Google, ...) and other ATSs (SmartRecruiters, Workable, ...) | the agent in the built-in browser; portals that need an account use the jobfill window (`--ats generic`) so the login carries over | answers still come from `jobfill resolve` |
 | LinkedIn / Indeed listings | the agent follows the employer's apply link first | |
 
+**Tailored CVs.** Keep one CV per posting anywhere under `documents/resume/` (e.g.
+`documents/resume/tailored cv/main_acme_labs_research_engineer_pre_training.pdf`). `apply start`
+picks the one whose file name contains the company and best matches the role, and reports it under
+`resume`; with no clear match (another company, or two CVs that fit equally) the application uploads
+`documents.resume_path`. Set or change one by hand with `apply start ... --resume <file>` or
+`app update <ID> --resume <file>`. The result record names the file the form actually holds.
+
 The filler never solves CAPTCHAs, never accepts terms without a standing consent, and never submits:
 `apply submit --confirm` runs only after the candidate says so (or they click Submit themselves).
 `apply fill --dry-run` previews what would be filled without typing.
@@ -158,6 +165,8 @@ plain Python, the AI and you answered across all applications.
   {"id": "q7", "label": "Will you require sponsorship?", "type": "select", "options": ["Yes", "No"], "required": true},
   {"id": "e0", "label": "Company", "type": "text", "section": "experience", "index": 0},
   {"id": "w",  "label": "Why do you want to work at Acme?", "type": "textarea", "max_chars": 1000},
+  {"id": "c",  "label": "Current Company", "type": "text", "required": true,
+   "description": "If it doesn't apply to you, please enter \"None\"."},
   {"id": "d",  "label": "Start date", "type": "date", "format": "MM/DD/YYYY"}
 ]}
 ```
@@ -172,6 +181,10 @@ plain Python, the AI and you answered across all applications.
   and month dropdowns match "September", "Sep" or "09". Defaults: `MM/YYYY` for date fields, "June 1, 2027"
   for questions like "When can you start?". `max_chars` / `max_words`: limits for written answers.
 - `required`: optional fields with nothing stored are skipped instead of asked.
+- `description`: the form's own instructions under the field (the filler reads `aria-describedby` and
+  description/help text in the field's block). When the stored data has no answer and the instructions
+  say what to enter if the question does not apply ("None", "N/A"), that is filled (free-text fields
+  only). Every `needs_user`, `needs_ai`, `uncertain` and `unmatched` result carries it as `instructions`.
 
 Each result has a `status`: `filled` (use `value`), `needs_ai` (agent writes it from `ai_task` and
 the shared `ai_context`), `needs_user` (ask once, store with the given command), `uncertain`
@@ -181,7 +194,10 @@ the shared `ai_context`), `needs_user` (ask once, store with the given command),
 
 Open questions ("Why us?", "Tell us about yourself", "What did you learn recently?", "Tell us about
 a time...", "How do you use AI in your work?", first 90 days, values, gaps) are recognized like any
-other question, then written per application. Each `needs_ai` task names a **playbook**, the
+other question, then written per application, also when the form marks them optional (a blank essay
+reads as no interest). Only "anything else?", "questions for us?", cover letters and employment gaps
+stay blank unless the field is required. An open question the bank does not know is still written
+(`open_ended_custom`) and queued for `/learn`. Each `needs_ai` task names a **playbook**, the
 technique recruiters expect for that question type (STAR for behavioral, hook -> link -> contribution
 for "why us", present -> past -> future for "about you", gap -> method -> proof for learning...).
 `ai_context.writing` carries the shared style rules, only the playbooks used on that form, and a

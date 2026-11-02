@@ -37,6 +37,8 @@ Work in this order, so the candidate is asked everything in **one** message:
   `python -m jobfill learn <id> --alias-of <question_id>`; if none is, treat it as `unmatched`.
 - `unmatched`: classify it with the `/learn` decision rules. A new reusable fact you define there
   becomes a `needs_user` item on the next resolve.
+- `needs_ai` with `question_id: open_ended_custom`: an open question the bank does not know. It is still
+  written in step 4 (also when the field is optional); classify its label with the `/learn` rules too.
 - Resolve again.
 
 **3b. Ask the candidate once.** Put every `needs_user` item from that resolve into ONE numbered
@@ -50,7 +52,25 @@ are still open, send one follow-up message with all of them, keeping their numbe
 Use ONLY the `ai_task` of each field plus the shared `ai_context` from the resolve output. Do not
 read the whole profile or the database; the context already holds the slices each question needs.
 
-- Follow `ai_task.guidance` and every line of `ai_context.rules`.
+**Write with the candidate's `job-answer-writer` skill.** Before the first `needs_ai` answer of an
+application, load it (Skill tool: `anthropic-skills:job-answer-writer`; other runtimes: if they offer
+it) and follow its research, matching, drafting, humanize and quality-gate steps for every answer and
+every example draft. jobfill's rules win where the two differ:
+- Inputs: the skill's "candidate material" is `ai_context.candidate` + `ai_context.relevant` only; never
+  the resume, documents or other applications. The posting is `ai_context.application.posting`.
+- The skill's "gold question" (the real reason for this company: used the product, met someone there,
+  a moment that connects them to it): for why-us / why-role / product questions, ask it in the batched
+  message of step 3b unless `ai_context.application.notes` already answers it, and store the reply with
+  `python -m jobfill app update <ID> --notes "<their words>"` so it reaches the context. Never write that
+  reason yourself.
+- No `[placeholders]` in a saved answer (`answer check` rejects them): a missing detail becomes a
+  numbered question in the review message (step 5).
+- A form limit always wins over the skill's word budgets and the playbook's `length`.
+- The skill's output (answer, word count, facts used with their source links) goes into the one review
+  or examples message; across one application, give each answer a different story.
+
+- Follow `ai_task.guidance` and every line of `ai_context.rules`. `ai_task.instructions` is the form's
+  own text under the field (a word limit, what to include, a format): it outranks the playbook's defaults.
 - Write with the technique for the question type: `ai_context.writing.playbooks[ai_task.playbook]`
   gives the answer's `structure` (in order), the expected `length` when the form sets no limit, and
   what to `avoid`; `writing.style` applies to every answer. Examples: `star` for "tell us about a

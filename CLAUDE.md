@@ -31,7 +31,9 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   salary) from documents or names. Ask; "decline" is a valid EEO answer.
 - Tier-3 answers: use only the `ai_task` + `ai_context` that `resolve`/`context` return. Do not load
   the whole profile; the point of jobfill is to keep those prompts small. Write with the playbook the
-  task names (`ai_context.writing`) and run `answer check` before `answer record`.
+  task names (`ai_context.writing`) and the candidate's `job-answer-writer` skill (load
+  `anthropic-skills:job-answer-writer` before the first answer; `/fill` step 4 says how it fits these
+  rules), and run `answer check` before `answer record`.
 - Ground every written claim in stored data. If the data cannot support an answer, ask.
 - Never submit an application without the candidate's explicit confirmation. Never type passwords
   or verification codes, never solve CAPTCHAs. Account sign-up/sign-in is `python -m jobfill login`,
@@ -58,6 +60,12 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
 - Lists never get a look-alike: a stored name (school, field of study) with no exact option is left
   empty and asked (`needs_user` with `set_with`). The candidate's pick, made in the window or through
   `apply set`, goes to `learned_choices` and is reused where a later form offers it (`choice list`).
+- Resume per application: `jobfill/resumes.py` picks a tailored CV under `documents/resume/` by file name
+  (company, then role words) at `apply start`; `applications.resume` holds it (`--resume` overrides) and
+  the `resume_file` rule falls back to `documents.resume_path`. Tested in `tests/test_resumes.py`.
+- Field instructions: `extract.js` reads the text under a field (`aria-describedby`, description/help
+  elements in its block) into `description`; the resolver passes it on as `instructions` and fills a
+  "None / N/A if it doesn't apply" answer when a rule has nothing (`text.not_applicable_answer`).
 - Result record: every question of an application is a row in `answers` (status, source, fill);
   `jobfill/report.py` turns it into `data/applications/app<ID>_*.md|json` and `app stats`.
 - Built-in catalog: `jobfill/catalog/` (`facts.py`, `records.py`, `choices.py`, `questions.py`).

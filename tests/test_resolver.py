@@ -2,6 +2,7 @@ import json
 import unittest
 
 from jobfill.resolver import Resolver, ai_task_for
+from jobfill.text import normalize
 
 from .helpers import EXAMPLES, TODAY, fresh_store
 
@@ -81,13 +82,16 @@ class TestSampleForm(unittest.TestCase):
         self.assertEqual(self.f["why"]["ai_task"]["limits"], {"max_chars": 1000})
         # A known open question is written even on an optional field; the candidate may still drop it.
         self.assertEqual((self.f["oss"]["status"], self.f["oss"]["question_id"]), ("needs_ai", "tech_opinion"))
-        # Unknown open question on an optional field: skipped, not sent to the AI.
+        # Unknown open question, even on an optional field: written by the AI and queued for `learn`.
         unknown = {"id": "q", "label": "If you could teach a class on anything, what would it be?", "type": "textarea"}
         optional = Resolver(self.store, self.app, today=TODAY).resolve([unknown])
         self.assertEqual((optional["fields"][0]["status"], optional["fields"][0]["question_id"]),
-                         ("skipped", "open_ended_custom"))
-        required = Resolver(self.store, self.app, today=TODAY).resolve([{**unknown, "required": True}])
-        self.assertEqual(required["fields"][0]["ai_task"]["question_id"], "open_ended_custom")
+                         ("needs_ai", "open_ended_custom"))
+        self.assertIn(normalize(unknown["label"]), {p["normalized"] for p in self.store.pending()})
+        # "Anything else?" stays blank on an optional field.
+        extra = {"id": "x", "label": "Is there anything else you would like us to know?", "type": "textarea"}
+        self.assertEqual(Resolver(self.store, self.app, today=TODAY).resolve([extra])["fields"][0]["status"],
+                         "skipped")
         self.assertIn("learning", self.f["learn"]["ai_task"]["themes"])
         # Each written answer names its technique; the context carries only the techniques on this form.
         self.assertEqual(self.f["why"]["ai_task"]["playbook"], "why_company")
@@ -422,6 +426,35 @@ class TestNoExactOption(unittest.TestCase):
         field = {"id": "f", "label": "Field of Study", "type": "select", "section": "education",
                  "options": ["Computer Science (CS)", "Mathematics"]}
         self.assertEqual(self.resolve(field)["value"], "Computer Science (CS)")
+
+
+class TestFieldInstructions(unittest.TestCase):
+    """The words under a field ("If it doesn't apply to you, please enter 'None'") shape the answer."""
+
+    NONE = "Please enter the company you are currently employed at. If it doesn't apply to you, please enter \"None\"."
+
+    def setUp(self):
+        self.store = fresh_store(with_profile=True, owner=self)   # one internship, no current employer
+        self.app = self.store.start_application("Acme", "Engineer")
+
+    def resolve(self, **field):
+        return Resolver(self.store, self.app, today=TODAY).resolve([{"id": "f", "required": True, **field}])["fields"][0]
+
+    def test_not_applicable_answer_from_the_form(self):
+        out = self.resolve(label="Current Company*", type="text", description=self.NONE)
+        self.assertEqual((out["status"], out["value"], out["source"]), ("filled", "None", "form:instructions"))
+        self.assertEqual(self.resolve(label="Current Company*", type="text")["status"], "needs_user")   # no instruction
+
+    def test_a_list_never_gets_a_typed_none(self):
+        out = self.resolve(label="Current Company*", type="select", options=["Acme", "Globex"], description=self.NONE)
+        self.assertEqual(out["status"], "needs_user")
+        self.assertEqual(out["instructions"], self.NONE)
+
+    def test_instructions_reach_the_candidate_and_the_writer(self):
+        why = self.resolve(label="Why Acme?", type="textarea", description="Under 150 words, please.")
+        self.assertEqual(why["ai_task"]["instructions"], "Under 150 words, please.")
+        odd = self.resolve(label="Favourite spaceship class", type="text", description="One word.")
+        self.assertEqual(odd["instructions"], "One word.")
 
 
 if __name__ == "__main__":

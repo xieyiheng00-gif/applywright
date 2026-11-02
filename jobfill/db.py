@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS applications (
     referrer    TEXT,
     posting     TEXT,
     notes       TEXT,
+    resume      TEXT,               -- this application's CV (tailored); NULL = documents.resume_path
     status      TEXT NOT NULL DEFAULT 'in_progress',
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
@@ -215,6 +216,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
                             ("idx", "INTEGER"), ("attempts", "INTEGER NOT NULL DEFAULT 0"), ("attempt_value", "TEXT")):
             if column not in have:
                 conn.execute(f"ALTER TABLE answers ADD COLUMN {column} {ddl}")
+        if "resume" not in {r["name"] for r in conn.execute("PRAGMA table_info(applications)")}:
+            conn.execute("ALTER TABLE applications ADD COLUMN resume TEXT")
 
 
 def _canonicalize_choice_facts(conn: sqlite3.Connection, ts: str) -> None:

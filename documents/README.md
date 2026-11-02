@@ -21,3 +21,7 @@ conflicts with what is already stored is listed for you to keep or replace, toge
 other open question in one numbered message.
 
 Point `documents.resume_path` at the PDF you want uploaded by default (setup asks).
+
+Tailored CVs go in a subfolder such as `resume/tailored cv/`, one per posting, named after the company
+and the role (`main_acme_labs_research_engineer_pre_training.pdf`). Setup does not read them;
+`/apply` uploads the one whose name matches the posting, and the default resume otherwise.
