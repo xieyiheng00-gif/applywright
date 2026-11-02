@@ -86,7 +86,7 @@ def start(store, data_dir: Path, url: str, *, company=None, role=None, source=No
         posting_file = state_dir(data_dir, app_id) / "posting.txt"
         posting_file.write_text(d.posting, encoding="utf-8")
     save_state(data_dir, app_id, {"url": url, "apply_url": d.apply_url or url, "ats": d.ats, "handler": d.handler,
-                                  "filled_once": False, "tag": f"jobfill-app-{app_id}"})
+                                  "filled_once": False, "tag": f"{browser.TAG_PREFIX}{app_id}"})
     prior = store.same_company_apps(company, exclude_id=app_id)
     out.update({"app_id": app_id, "company": company, "role": role or d.role, "location": d.location,
                 "posting_file": str(posting_file) if posting_file else None,

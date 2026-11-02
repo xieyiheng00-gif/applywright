@@ -166,6 +166,9 @@ def session(data_dir: Path, headless: bool = False):
         yield browser.contexts[0] if browser.contexts else browser.new_context()
 
 
+TAG_PREFIX = "jobfill-app-"   # window.name of each application's tab: jobfill-app-<id> (runner.start)
+
+
 def tagged_page(context, tag: str):
     """The tab of this application, or None if it was closed (never opens one)."""
     for page in context.pages:
@@ -178,15 +181,21 @@ def tagged_page(context, tag: str):
 
 
 def find_page(context, tag: str, url: str):
-    """The tab used for this application: tagged earlier, else same site, else a new tab."""
+    """The tab used for this application: tagged earlier, else an untagged tab on the same site (one the
+    candidate opened), else a new tab. A tab tagged for another application is never taken: every Ashby
+    or Greenhouse job shares one host, and filling that tab would put this application's answers into
+    another company's form."""
     from urllib.parse import urlparse
     host = urlparse(url).netloc
     same_site = None
     for page in context.pages:
         try:
-            if page.evaluate("() => window.name") == tag:
-                return page, False
+            name = page.evaluate("() => window.name")
         except Exception:
+            continue
+        if name == tag:
+            return page, False
+        if str(name or "").startswith(TAG_PREFIX):
             continue
         if urlparse(page.url).netloc == host:
             same_site = page
