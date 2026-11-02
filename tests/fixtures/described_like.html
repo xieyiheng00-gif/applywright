@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Fields with instructions</title></head>
+<body>
+<form id="application-form">
+  <!-- Greenhouse: the instruction is tied to the input by aria-describedby; the error slot is empty. -->
+  <div class="field-wrapper"><div class="text-input-wrapper"><div class="input-wrapper">
+    <label id="q_company-label" for="q_company" class="label">Current Company<span aria-hidden="true">*</span></label>
+    <input id="q_company" type="text" aria-required="true"
+           aria-describedby="q_company-description q_company-error q_company-help"></div></div>
+    <div class="body body__secondary"><div id="q_company-description" class="question-description">
+      <p>Please enter the company your are currently employed at. If it doesn't apply to you, please enter "None".</p></div></div>
+    <div id="q_company-error" class="error"></div></div>
+
+  <div class="field-wrapper"><div class="text-input-wrapper"><div class="input-wrapper">
+    <label id="q_title-label" for="q_title" class="label">Current Title or Role<span aria-hidden="true">*</span></label>
+    <input id="q_title" type="text" aria-required="true"
+           aria-describedby="q_title-description q_title-error"></div></div>
+    <div class="body body__secondary"><div id="q_title-description" class="question-description">
+      <p>Please enter your current title at your current employer. If it doesn’t apply to you, please enter “None”.</p></div></div>
+    <div id="q_title-error" class="error"></div></div>
+
+  <!-- Ashby: a description element inside the field's own block, no aria link. -->
+  <div class="ashby-application-form-field-entry">
+    <label class="ashby-application-form-question-title" for="q_why">Why Acme Robotics?</label>
+    <div class="ashby-application-form-question-description">Keep it under 150 words and mention one product of ours.</div>
+    <textarea id="q_why"></textarea></div>
+
+  <!-- No instructions: must not borrow the neighbour's. -->
+  <div class="ashby-application-form-field-entry">
+    <label class="ashby-application-form-question-title" for="q_color">What is your favorite color?</label>
+    <input id="q_color" type="text"></div>
+</form>
+</body></html>

@@ -63,6 +63,9 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
 - Resume per application: `jobfill/resumes.py` picks a tailored CV under `documents/resume/` by file name
   (company, then role words) at `apply start`; `applications.resume` holds it (`--resume` overrides) and
   the `resume_file` rule falls back to `documents.resume_path`. Tested in `tests/test_resumes.py`.
+- Field instructions: `extract.js` reads the text under a field (`aria-describedby`, description/help
+  elements in its block) into `description`; the resolver passes it on as `instructions` and fills a
+  "None / N/A if it doesn't apply" answer when a rule has nothing (`text.not_applicable_answer`).
 - Result record: every question of an application is a row in `answers` (status, source, fill);
   `jobfill/report.py` turns it into `data/applications/app<ID>_*.md|json` and `app stats`.
 - Built-in catalog: `jobfill/catalog/` (`facts.py`, `records.py`, `choices.py`, `questions.py`).

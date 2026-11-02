@@ -291,10 +291,14 @@ def summarize(report: dict, app_id: int) -> dict:
                         "choices": v.get("choices"), "store": v.get("store"), "sensitive": v.get("sensitive"),
                         # No exact option: the candidate picks in the window, or tells the agent (`apply set`).
                         "set_with": f"python -m jobfill apply set --app {app_id} --field {v['field']} "
-                                    "--value \"<their choice>\"" if v.get("no_exact") else None}
+                                    "--value \"<their choice>\"" if v.get("no_exact") else None,
+                        # The form's own words under the field ("enter None if it doesn't apply", "in USD").
+                        "instructions": v.get("instructions")}
                        for v in pick("needs_user")],
-        "uncertain": [{"field": v["field"], "label": v["label"], "candidates": v.get("candidates")} for v in pick("uncertain")],
-        "unmatched": [{"field": v["field"], "label": v["label"]} for v in pick("unmatched")],
+        "uncertain": [{"field": v["field"], "label": v["label"], "candidates": v.get("candidates"),
+                       "instructions": v.get("instructions")} for v in pick("uncertain")],
+        "unmatched": [{"field": v["field"], "label": v["label"], "instructions": v.get("instructions")}
+                      for v in pick("unmatched")],
         # Filled, but not completely (e.g. skills the menu has no entry for): the agent or candidate decides.
         "partly": [{"field": k, "label": v["label"], "note": v["note"]} for k, v in fields.items() if v.get("note")
                    and v.get("fill") == "ok"],

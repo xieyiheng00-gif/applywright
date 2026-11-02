@@ -158,6 +158,28 @@ def canonical_state(text: str | None) -> str | None:
     return _STATE_BY_NAME.get(normalize(t))
 
 
+# --------------------------------------------------------------------------- field instructions
+
+# "If it doesn't apply to you, please enter "None"." / "Enter N/A if not applicable".
+_NOT_APPLICABLE = r"(?:not appl\w*|n/a|doesn't apply|does not apply|not currently employed|not employed|you don't have)"
+_ENTER = r"(?:enter|type|write|put|answer|use|input|respond with|fill in)"
+_NA_TOKEN = r"(?:\"([^\"]{1,15})\"|'([^']{1,15})'|\b(none|n/a|na|0)\b)"
+_NA_PATTERNS = [re.compile(rf"\b(?:if|when)\b[^.;]*?{_NOT_APPLICABLE}[^.;]*?\b{_ENTER}\s*:?\s*{_NA_TOKEN}", re.I),
+                re.compile(rf"\b{_ENTER}\s*:?\s*{_NA_TOKEN}[^.;]*?\b(?:if|when)\b[^.;]*?{_NOT_APPLICABLE}", re.I)]
+
+
+def not_applicable_answer(instructions: str | None) -> str | None:
+    """What the form says to enter when the question does not apply to the candidate ("None", "N/A")."""
+    t = (instructions or "").translate(_TRANSLATE)
+    for pat in _NA_PATTERNS:
+        m = pat.search(t)
+        if m:
+            token = next(g for g in m.groups() if g)
+            return token.strip() if not token.islower() else token.upper() if token in ("n/a", "na") else \
+                token.capitalize()
+    return None
+
+
 # --------------------------------------------------------------------------- options
 
 def names_same(option: str, value: str) -> bool:

@@ -90,6 +90,7 @@ CASES = [
     ("Are you willing to undergo a background check, in accordance with local law?", "background_check", None, None),
     ("Current Company", "current_employer", None, None),
     ("Current Title", "current_title", None, None),
+    ("Current Title or Role*", "current_title", None, None),
     ("Highest Degree Obtained", "highest_degree", None, None),
     ("Graduation Year", "graduation_year", None, None),
     ("Pronouns (optional)", "pronouns", None, None),

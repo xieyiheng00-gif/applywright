@@ -208,7 +208,7 @@ def to_resolver_field(f: dict) -> dict:
         out["picks"] = True   # a list answer (skills) stays a list: each entry is searched and picked on its own
     if f.get("options") and kind != "input":
         out["options"] = f["options"]
-    for k in ("max_chars", "section", "index", "placeholder"):
+    for k in ("max_chars", "section", "index", "placeholder", "description"):
         if f.get(k) not in (None, ""):
             out[k] = f[k]
     if rtype == "date":

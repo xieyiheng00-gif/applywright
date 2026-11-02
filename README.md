@@ -165,6 +165,8 @@ plain Python, the AI and you answered across all applications.
   {"id": "q7", "label": "Will you require sponsorship?", "type": "select", "options": ["Yes", "No"], "required": true},
   {"id": "e0", "label": "Company", "type": "text", "section": "experience", "index": 0},
   {"id": "w",  "label": "Why do you want to work at Acme?", "type": "textarea", "max_chars": 1000},
+  {"id": "c",  "label": "Current Company", "type": "text", "required": true,
+   "description": "If it doesn't apply to you, please enter \"None\"."},
   {"id": "d",  "label": "Start date", "type": "date", "format": "MM/DD/YYYY"}
 ]}
 ```
@@ -179,6 +181,10 @@ plain Python, the AI and you answered across all applications.
   and month dropdowns match "September", "Sep" or "09". Defaults: `MM/YYYY` for date fields, "June 1, 2027"
   for questions like "When can you start?". `max_chars` / `max_words`: limits for written answers.
 - `required`: optional fields with nothing stored are skipped instead of asked.
+- `description`: the form's own instructions under the field (the filler reads `aria-describedby` and
+  description/help text in the field's block). When the stored data has no answer and the instructions
+  say what to enter if the question does not apply ("None", "N/A"), that is filled (free-text fields
+  only). Every `needs_user`, `needs_ai`, `uncertain` and `unmatched` result carries it as `instructions`.
 
 Each result has a `status`: `filled` (use `value`), `needs_ai` (agent writes it from `ai_task` and
 the shared `ai_context`), `needs_user` (ask once, store with the given command), `uncertain`

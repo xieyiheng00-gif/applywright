@@ -629,7 +629,7 @@ QUESTIONS = [
     Q("current_title", 2, "experience", "Current job title",
       ["current title", "current job title", "current position", "current role", "most recent job title",
        "current or most recent job title", "current or previous job title", "most recent title",
-       "present title", "current position title", "current or most recent title"],
+       "present title", "current position title", "current or most recent title", "current title or role"],
       answer=derive("current_title")),
     Q("currently_employed", 2, "experience", "Are you currently employed?",
       ["are you currently employed", "current employment status", "are you employed", "employment status",

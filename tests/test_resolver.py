@@ -428,5 +428,34 @@ class TestNoExactOption(unittest.TestCase):
         self.assertEqual(self.resolve(field)["value"], "Computer Science (CS)")
 
 
+class TestFieldInstructions(unittest.TestCase):
+    """The words under a field ("If it doesn't apply to you, please enter 'None'") shape the answer."""
+
+    NONE = "Please enter the company you are currently employed at. If it doesn't apply to you, please enter \"None\"."
+
+    def setUp(self):
+        self.store = fresh_store(with_profile=True, owner=self)   # one internship, no current employer
+        self.app = self.store.start_application("Acme", "Engineer")
+
+    def resolve(self, **field):
+        return Resolver(self.store, self.app, today=TODAY).resolve([{"id": "f", "required": True, **field}])["fields"][0]
+
+    def test_not_applicable_answer_from_the_form(self):
+        out = self.resolve(label="Current Company*", type="text", description=self.NONE)
+        self.assertEqual((out["status"], out["value"], out["source"]), ("filled", "None", "form:instructions"))
+        self.assertEqual(self.resolve(label="Current Company*", type="text")["status"], "needs_user")   # no instruction
+
+    def test_a_list_never_gets_a_typed_none(self):
+        out = self.resolve(label="Current Company*", type="select", options=["Acme", "Globex"], description=self.NONE)
+        self.assertEqual(out["status"], "needs_user")
+        self.assertEqual(out["instructions"], self.NONE)
+
+    def test_instructions_reach_the_candidate_and_the_writer(self):
+        why = self.resolve(label="Why Acme?", type="textarea", description="Under 150 words, please.")
+        self.assertEqual(why["ai_task"]["instructions"], "Under 150 words, please.")
+        odd = self.resolve(label="Favourite spaceship class", type="text", description="One word.")
+        self.assertEqual(odd["instructions"], "One word.")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -53,7 +53,9 @@ it the same way and replace the upload with `apply set --field <resume field> --
      batched question message with the exact wording; only if they want a standing answer, define a
      `consent.*` fact and learn the question onto it.
    - `needs_user` - collect them (plus prompts of facts you just defined) into ONE numbered message;
-     store the answers (`fact set`, `record add`).
+     store the answers (`fact set`, `record add`). An item with `instructions` carries the form's own
+     words under the field ("If it doesn't apply to you, please enter 'None'"): quote them in the
+     question and follow them; they outrank a suggestion from the profile.
      An item with `set_with` is a list (a school, a field of study, ...) that has no option exactly
      matching the stored answer: jobfill left it empty instead of picking a look-alike. Do not choose for
      the candidate. In the same numbered message, show their stored answer and the `choices` (the closest

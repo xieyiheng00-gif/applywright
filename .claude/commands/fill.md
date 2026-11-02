@@ -69,7 +69,8 @@ every example draft. jobfill's rules win where the two differ:
 - The skill's output (answer, word count, facts used with their source links) goes into the one review
   or examples message; across one application, give each answer a different story.
 
-- Follow `ai_task.guidance` and every line of `ai_context.rules`.
+- Follow `ai_task.guidance` and every line of `ai_context.rules`. `ai_task.instructions` is the form's
+  own text under the field (a word limit, what to include, a format): it outranks the playbook's defaults.
 - Write with the technique for the question type: `ai_context.writing.playbooks[ai_task.playbook]`
   gives the answer's `structure` (in order), the expected `length` when the form sets no limit, and
   what to `avoid`; `writing.style` applies to every answer. Examples: `star` for "tell us about a

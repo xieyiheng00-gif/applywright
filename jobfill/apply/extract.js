@@ -312,6 +312,36 @@
                   required: required(box, label) || !!(box.parentElement && box.parentElement.querySelector("label[class*='required' i]")),
                   section: sectionOf(box), value: pressed ? clean(pressed.innerText) : "" });
   }
+  // A field's own instructions, shown under it ("If it doesn't apply to you, please enter 'None'", "in USD",
+  // "max 300 words"): aria-describedby first (Greenhouse), else a description/help element in the field's
+  // own block (Ashby, Workday). Error slots are skipped; they are empty until the site complains.
+  const DESC = "[id$='-description'], [class*='description' i], [class*='helper' i], [class*='hint' i], " +
+               "[data-automation-id*='description' i], [data-automation-id*='instruction' i]";
+  const describe = (own) => {
+    const el = own[0];
+    const ids = (el.getAttribute("aria-describedby") || "").split(/\s+/).filter((i) => i && !/error/i.test(i));
+    const via = clean(ids.map((i) => textOf(byId(i))).join(" "));
+    if (via) return via;
+    let node = el;
+    for (let depth = 0; depth < 5; depth++) {
+      node = node.parentElement;
+      if (!node || node === document.body) break;
+      if (Array.from(node.querySelectorAll(CONTROL)).some((c) => !own.includes(c))) break;   // another question's block
+      const d = Array.from(node.querySelectorAll(DESC)).find((c) => !own.some((o) => c.contains(o)) && !c.closest("label")
+                                                                    && textOf(c));
+      if (d) return textOf(d);
+    }
+    return "";
+  };
+  for (const f of fields) {
+    const ownIds = f.option_refs ? f.option_refs.map((r) => r[1]) : [f.id.replace(/^g-/, "")];
+    const own = ownIds.map((i) => document.querySelector(`[data-jobfill-id="${i}"]`)).filter(Boolean);
+    if (own[0] && own[0].tagName === "BUTTON" && own[0].parentElement) {
+      own.push(...own[0].parentElement.querySelectorAll(":scope > input"));   // the 0x0 input beside "Select One"
+    }
+    const d = own.length ? describe(own).slice(0, 500) : "";
+    if (d && d !== f.label && !f.label.includes(d)) f.description = d;
+  }
   // Index repeating blocks: the n-th "School" inside the education section is index n.
   for (const f of fields) {
     if (f.option_refs) {
