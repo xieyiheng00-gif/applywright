@@ -17,3 +17,6 @@ jobfill = "jobfill.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["jobfill*"]
+
+[tool.setuptools.package-data]
+jobfill = ["apply/*.js", "portal/static/*"]

@@ -8,7 +8,7 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
 
 | Command | File | When |
 |---|---|---|
-| `/setup` | `.claude/commands/setup.md` | First run: import documents, collect facts, write base material |
+| `/setup` | `.claude/commands/setup.md` | First run: import documents, collect facts (chat questionnaire or the setup portal), write base material |
 | `/apply` | `.claude/commands/apply.md` | `/apply <job URL>`: detect the system, auto-fill (Greenhouse/Lever/iCIMS/Ashby in Python, other portals in the built-in browser) |
 | `/fill`  | `.claude/commands/fill.md`  | Answer a form given as field JSON: resolve, ask gaps, write tier-3 answers |
 | `/learn` | `.claude/commands/learn.md` | Classify questions the bank did not recognize |
@@ -71,6 +71,14 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   "None / N/A if it doesn't apply" answer when a rule has nothing (`text.not_applicable_answer`).
 - Result record: every question of an application is a row in `answers` (status, source, fill);
   `jobfill/report.py` turns it into `data/applications/app<ID>_*.md|json` and `app stats`.
+- Setup portal: `jobfill/portal/` (`python -m jobfill portal`), a local form laid out like an
+  application portal. `layout.py` places every built-in fact on one page in portal wording (a new fact
+  in `facts.py` must be placed there too; `tests/test_portal.py` checks); required marks come from the
+  catalog's `setup="required"` and `store.RECORD_SETUP`. `form.py` reads and saves through `Store` and
+  writes nothing when any field fails. `server.py` binds 127.0.0.1, checks the Host header and a key
+  kept per database (so a tab left open saves again after a restart), and exits after Submit. Saves
+  send only what changed on the page; records go only when the page deletes them. The candidate
+  fills it; the agent only starts it.
 - Built-in catalog: `jobfill/catalog/` (`facts.py`, `records.py`, `choices.py`, `questions.py`).
   `python -m jobfill init` re-seeds it into existing databases without touching learned rows.
 - Adding a built-in question: add it to `questions.py` (tier 3: give it a `playbook` from

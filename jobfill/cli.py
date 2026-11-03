@@ -341,6 +341,14 @@ def cmd_login(store, args):
     _out(out)
 
 
+def cmd_portal(store, args):
+    from . import resumes
+    from .portal import server
+    database = resumes.shown(Path(args.db) if args.db else db.default_db_path(), db.ROOT)
+    server.serve(store, db.ROOT, database=database, port=args.port, open_browser=not args.no_browser,
+                 keep_open=args.keep_open)
+
+
 def cmd_choice(store, args):
     """Choices the candidate picked where a form had no option exactly matching a stored answer."""
     if args.action == "list":
@@ -539,6 +547,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--replace", help="comma-separated conflict ids to overwrite")
     s.add_argument("--replace-all", action="store_true")
     s.set_defaults(fn=cmd_import)
+
+    s = sub.add_parser("portal", help="fill the profile in a local web form laid out like a job application portal")
+    s.add_argument("--port", type=int, default=8765, help="port on 127.0.0.1 (a free one if taken)")
+    s.add_argument("--no-browser", action="store_true", help="print the link instead of opening it")
+    s.add_argument("--keep-open", action="store_true", help="keep serving after Submit (stop with Ctrl+C)")
+    s.set_defaults(fn=cmd_portal)
 
     s = sub.add_parser("export", help="dump the profile as JSON or Markdown")
     s.add_argument("--format", default="json", choices=["json", "md"]); s.add_argument("--tier", type=int)

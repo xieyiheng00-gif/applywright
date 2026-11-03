@@ -5,7 +5,7 @@ It points at the single source of truth instead of repeating it, so the runtimes
 
 1. **Project rules and the tier model:** [CLAUDE.md](CLAUDE.md). They apply to every agent.
 2. **Workflows:** the step-by-step specs in [.claude/commands/](.claude/commands/) are canonical:
-   - `setup.md` - onboarding (documents folder, single resume, or questionnaire)
+   - `setup.md` - onboarding (documents folder, single resume, questionnaire, or the setup portal)
    - `apply.md` - "apply to <job URL>": detect the application system and auto-fill it
    - `fill.md` - answering a form given as field JSON
    - `learn.md` - classifying questions the bank did not recognize
