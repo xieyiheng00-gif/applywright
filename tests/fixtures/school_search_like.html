@@ -1,0 +1,56 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Apply - Acme Capital</title></head>
+<body>
+<!-- Like Greenhouse's School field: a catalogue of thousands that shows only its first entries
+     (alphabetical) when opened, and finds the rest only when you type part of the name.
+     Results arrive late, as from a server. #nomadison leaves UW-Madison out of the catalogue. -->
+<form id="application-form">
+  <div class="field-wrapper"><label for="first_name" class="label">First Name</label><input id="first_name" type="text"></div>
+  <div class="education--container">
+    <div class="select__container"><label id="school--0-label" for="school--0" class="label">School</label>
+      <div class="select__control"><div class="select__single-value"></div>
+        <input id="school--0" role="combobox" aria-labelledby="school--0-label" aria-controls="school--0-list"></div>
+      <div id="school--0-list" role="listbox" style="display:none"></div></div>
+  </div>
+  <div class="education--container">
+    <div class="select__container"><label id="school--1-label" for="school--1" class="label">School</label>
+      <div class="select__control"><div class="select__single-value"></div>
+        <input id="school--1" role="combobox" aria-labelledby="school--1-label" aria-controls="school--1-list"></div>
+      <div id="school--1-list" role="listbox" style="display:none"></div></div>
+  </div>
+  <button type="submit">Submit application</button>
+</form>
+<script>
+const CATALOGUE = [
+  "Aalto University", "Abilene Christian University", "Adelphi University", "American University",
+  "American University in Cairo", "Arizona State University", "Auburn University", "Aston University",
+  "James Madison University", "Universidad de Guadalajara", "Universidad Nacional de Colombia",
+  "University of Washington", "University of Wisconsin, Madison", "University of Wisconsin-Milwaukee",
+  "University of Wisconsin-Eau Claire", "Washington University in St. Louis", "Wisconsin Lutheran College",
+].filter((s) => !(location.hash === "#nomadison" && s === "University of Wisconsin, Madison")).sort();
+
+function combo(id) {
+  const input = document.getElementById(id);
+  const list = document.getElementById(input.getAttribute("aria-controls"));
+  const shown = input.parentElement.querySelector(".select__single-value");
+  let pending = null;
+  const show = (opts) => {
+    list.innerHTML = "";
+    opts.forEach((o) => { const d = document.createElement("div"); d.setAttribute("role", "option"); d.textContent = o;
+      d.addEventListener("click", () => { shown.textContent = o; input.value = ""; list.style.display = "none"; });
+      list.appendChild(d); });
+    list.style.display = opts.length ? "block" : "none";
+  };
+  const render = () => {
+    const q = input.value.trim().toLowerCase();
+    clearTimeout(pending);
+    if (!q) return show(CATALOGUE.slice(0, 8));              // first page only
+    pending = setTimeout(() => show(CATALOGUE.filter((s) => s.toLowerCase().includes(q)).slice(0, 10)), 300);
+  };
+  input.addEventListener("click", render); input.addEventListener("input", render);
+  input.addEventListener("keydown", (e) => { if (e.key === "Escape") list.style.display = "none"; });
+}
+combo("school--0");
+combo("school--1");
+</script>
+</body></html>

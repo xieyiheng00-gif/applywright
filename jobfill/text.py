@@ -195,6 +195,22 @@ def names_same(option: str, value: str) -> bool:
     return bool(m) and w in (normalize(m.group(1)), normalize(m.group(2)))
 
 
+# Words in most names (schools, fields of study), so they narrow a search too little: "University", "of".
+FILLER_WORDS = {"a", "an", "and", "at", "college", "for", "in", "institute", "of", "school", "the", "university"}
+
+
+def search_queries(name: str, limit: int = 5) -> list[str]:
+    """What to type into a search-as-you-type list to find ``name``: the whole name, then its distinctive
+    words together, then each one alone, longest first ("Wisconsin", then "Madison"). The searches only
+    find candidates; the pick is still the exact name (``names_same``)."""
+    words = [w for w in normalize(name).split() if w not in FILLER_WORDS and len(w) > 2]
+    queries: list[str] = []
+    for q in [name.strip(), " ".join(words), *sorted(words, key=len, reverse=True)]:
+        if q and normalize(q) not in map(normalize, queries):
+            queries.append(q)
+    return queries[:limit]
+
+
 def closest_options(value: str, options: list, n: int = 10) -> list[str]:
     """The ``n`` options most like ``value`` (to show the candidate when none is exactly it)."""
     v = normalize(value)

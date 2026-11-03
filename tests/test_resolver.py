@@ -2,7 +2,7 @@ import json
 import unittest
 
 from jobfill.resolver import Resolver, ai_task_for
-from jobfill.text import normalize
+from jobfill.text import names_same, normalize, search_queries
 
 from .helpers import EXAMPLES, TODAY, fresh_store
 
@@ -426,6 +426,20 @@ class TestNoExactOption(unittest.TestCase):
         field = {"id": "f", "label": "Field of Study", "type": "select", "section": "education",
                  "options": ["Computer Science (CS)", "Mathematics"]}
         self.assertEqual(self.resolve(field)["value"], "Computer Science (CS)")
+
+
+class TestListSearch(unittest.TestCase):
+    """A long list is searched by the name, then its distinctive words; the pick stays the exact name."""
+
+    def test_queries_go_from_the_whole_name_to_its_distinctive_words(self):
+        self.assertEqual(search_queries("University of Wisconsin-Madison"),
+                         ["University of Wisconsin-Madison", "wisconsin madison", "wisconsin", "madison"])
+        self.assertEqual(search_queries("Economics"), ["Economics"])
+
+    def test_only_the_same_name_counts(self):
+        self.assertTrue(names_same("University of Wisconsin, Madison", "University of Wisconsin-Madison"))
+        for other in ("University of Wisconsin-Milwaukee", "James Madison University", "University of Wisconsin"):
+            self.assertFalse(names_same(other, "University of Wisconsin-Madison"), other)
 
 
 class TestFieldInstructions(unittest.TestCase):

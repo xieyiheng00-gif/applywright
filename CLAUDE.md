@@ -58,7 +58,10 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   matched skills, evidence, angles, company lines); tasks with `examples` get that many drafts for the
   candidate to pick from before anything is recorded.
 - Lists never get a look-alike: a stored name (school, field of study) with no exact option is left
-  empty and asked (`needs_user` with `set_with`). The candidate's pick, made in the window or through
+  empty and asked (`needs_user` with `set_with`). A search-as-you-type list that shows only its first
+  entries is searched first (`forms.search_combobox`: earlier picks, the name, then its distinctive words
+  from `text.search_queries`), and a result is picked only if `names_same` holds; tested on
+  `tests/fixtures/school_search_like.html`. The candidate's pick, made in the window or through
   `apply set`, goes to `learned_choices` and is reused where a later form offers it (`choice list`).
 - Resume per application: `jobfill/resumes.py` picks a tailored CV under `documents/resume/` by file name
   (company, then role words) at `apply start`; `applications.resume` holds it (`--resume` overrides) and

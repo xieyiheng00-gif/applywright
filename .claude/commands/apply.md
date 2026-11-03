@@ -57,7 +57,8 @@ it the same way and replace the upload with `apply set --field <resume field> --
      words under the field ("If it doesn't apply to you, please enter 'None'"): quote them in the
      question and follow them; they outrank a suggestion from the profile.
      An item with `set_with` is a list (a school, a field of study, ...) that has no option exactly
-     matching the stored answer: jobfill left it empty instead of picking a look-alike. Do not choose for
+     matching the stored answer, also after jobfill searched the list for the name and its key words:
+     jobfill left it empty instead of picking a look-alike. Do not choose for
      the candidate. In the same numbered message, show their stored answer and the `choices` (the closest
      options) and say they can either pick it in the window themselves, or tell you. If they pick it in
      the window, just run `apply fill` again. If they tell you, enter their exact choice with the
