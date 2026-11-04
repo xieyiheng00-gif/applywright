@@ -29,13 +29,18 @@ If `$ARGUMENTS` contains `--section <name>`, skip to **Section mode** at the end
 Scan `documents/` (Glob `documents/**/*`, ignore `README.md` and `.gitkeep`) and count files per
 subfolder.
 
-- If `$ARGUMENTS` or the conversation already includes a resume, or `documents/` has files, do not
+- If `$ARGUMENTS` contains `--portal`, or the candidate asks for the form / portal / website, use
+  **Path D** (with Path A or B first when there are documents or a resume).
+- Else, if `$ARGUMENTS` or the conversation already includes a resume, or `documents/` has files, do not
   ask: use **Path A** (documents folder) or **Path B** (the resume given in chat) and go to Step 2.
-- Otherwise send one short message with the three options, then wait:
+- Otherwise send one short message with the four options, then wait:
   - **A. Documents folder** - put resume, LinkedIn PDF export, transcripts, project write-ups in
     `documents/` (layout in `documents/README.md`) and say "go".
   - **B. Paste or attach one resume** here.
-  - **C. Questionnaire only** - skip documents; Step 4 asks for everything.
+  - **C. Questionnaire only** - skip documents; Step 4 asks for everything in chat.
+  - **D. Setup portal** - fill a local web form laid out like a job application (pages, required
+    questions marked *), in the browser. Combines with A or B: the documents are read first and the
+    form opens with what was found.
 
 In the first message of setup, add one sentence that the profile stays on this machine in `data/`
 and `documents/`, which git ignores.
@@ -80,6 +85,8 @@ Read every source document. Build ONE patch file at `data/patches/<YYYY-MM-DD>-<
    already supplies and every record kind the patch already contains.
 
 ## Step 4: Send ONE numbered questionnaire
+
+Path D: skip Steps 4 and 5 and follow **Portal path** below.
 
 Combine everything that needs the candidate into a single message. Number the questions
 continuously (1, 2, 3, ... across all sections) so they can reply "1. yes, 2. decline, ...".
@@ -148,6 +155,35 @@ are fine (you will follow up once on what is left).
 4. Students: set `profile.years_experience_override` from their section G answer.
 5. If any required item is unanswered or a value was rejected, send ONE follow-up message listing
    all of them (keep the original numbers), then store those answers.
+
+## Portal path (Path D): the candidate answers in a local web form
+
+Instead of Steps 4 and 5, the candidate fills the setup portal: a page on 127.0.0.1 laid out like a
+job application (My Information, Work Authorization, Experience, Education, Skills & Documents,
+Application Questions, About You, Voluntary Disclosures, Review). It shows every stored value, marks
+the required questions with * and checks them before Submit, and stores answers through the same
+validation as `fact set` and `import`. You never fill it in yourself.
+
+1. With documents (A or B first): after Step 3, apply only the additive part of the patch with
+   `python -m jobfill import data/patches/<file>.json --apply` (no `--replace`: conflicts keep the
+   stored value). Disputed values stay out of the patch; list each mismatch in your message so the
+   candidate fixes it in the form.
+2. Run `python -m jobfill portal` in the background. It opens the browser; its first output line
+   holds the link with its key and the database it saves to (`--no-browser` only prints them). Send the candidate the link
+   and one sentence: the form saves only to this computer, Submit stores the profile and sends
+   nothing anywhere, Save for Later keeps a draft.
+3. Wait for the command to end. It prints one JSON line per save and exits after Submit with
+   `"submitted": true`, `setup_complete` and `missing_recommended`. If the candidate says they are
+   done without submitting, ask them to click Submit (or stop the command and read `status`).
+4. If they attached a resume in the form (`"attached"` lines) and no documents were read, offer once
+   to read it (Steps 2-3) and reopen the portal with what it found.
+5. Anything still missing (`python -m jobfill status`, `missing --tier 1|2`): ONE batched message, as
+   in Step 5.5.
+6. Step 6: the About You answers are already stored as `profile.*` facts and `story` records, in the
+   candidate's words. Keep them; draft only what is still empty (and stories, if fewer than four)
+   and send those drafts for approval as usual. Then Step 7.
+
+The candidate can run `python -m jobfill portal` again at any time to review or change their profile.
 
 ## Step 6: Tier-3 base material (one approval message)
 

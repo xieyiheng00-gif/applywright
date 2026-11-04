@@ -11,10 +11,10 @@ from .. import report as results
 from .. import resumes
 from ..db import ROOT
 from ..resolver import Resolver
-from ..text import normalize
+from ..text import closest_options, normalize
 from . import adapters, browser, pages
 from .detect import Detection, detect
-from .forms import NoExactChoice, extract, fill, is_empty, to_resolver_field
+from .forms import NoExactChoice, extract, fill, is_empty, search_combobox, to_resolver_field
 
 MAX_PASSES = 4   # re-read the form after filling: answers can reveal follow-up questions
 MAX_FILL_ATTEMPTS = 2   # same field, same value: a second failure means retrying will not help
@@ -147,6 +147,9 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
                          "status": "filled", "value": f["value"], "fill": "kept (the candidate's answer)",
                          "by": "candidate"}
                 theirs.append((f, r))
+            elif r.get("no_exact") and f["kind"] == "combobox" and not dry_run and is_empty(f) \
+                    and (found := _search_list(store, app_id, frame, f, r, entry, asked)):
+                attempts.append((r["id"], f, found))
             elif r.get("no_exact"):
                 if asked is not None and not dry_run:
                     asked[_key(store, f)] = {"question_id": r.get("question_id"), "value": r.get("raw")}
@@ -228,6 +231,30 @@ def _close(a, b) -> bool:
     """Same answer as displayed: "United States +1" in a dropdown is the stored "United States"."""
     x, y = _flat(a), _flat(b)
     return x == y or bool(x and y and (x in y or y in x))
+
+
+def _search_list(store, app_id: int, frame, f: dict, r: dict, entry: dict, asked: dict | None) -> str | None:
+    """The list showed only its first entries and none is the stored answer: search it for the name (and the
+    candidate's earlier picks for it) and pick only an exact result. Otherwise the candidate is asked, with
+    what the searches found as the closest choices."""
+    value = str(r["raw"])
+    hit, offered = search_combobox(frame, f["id"], value, store.learned_choices(r.get("question_id"), value))
+    if hit is None:
+        if offered:
+            near = closest_options(value, offered)
+            entry.update(choices=near, ask=f"No option for '{f['label']}' is exactly your stored answer ({value}), "
+                                           f"also after searching the list. Closest: {near}. Pick one in the "
+                                           "window, or say which; it is remembered for other forms.")
+        if asked is not None:
+            asked[_key(store, f)] = {"question_id": r.get("question_id"), "value": value}
+        return None
+    for k in ("ask", "choices", "no_exact"):
+        entry.pop(k, None)
+    entry.update(status="filled", value=hit, fill="ok")
+    store.record_answer(app_id, _key(store, f), f["label"], hit, question_id=r.get("question_id"),
+                        source=r.get("source") or "", tier=r.get("tier"), status="filled", fill="ok",
+                        section=f.get("section"), idx=f.get("index"))
+    return hit
 
 
 def _ask_candidate(store, app_id: int, f: dict, r: dict, entry: dict, e: NoExactChoice, asked: dict | None) -> None:

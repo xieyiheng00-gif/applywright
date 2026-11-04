@@ -96,14 +96,14 @@ class TestFiller(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def run_fixture(self, name, ats, company, store=None):
+    def run_fixture(self, name, ats, company, store=None, hash=""):
         from jobfill.apply.runner import fill_frame, summarize
         store = store or fresh_store(with_profile=True, owner=self)
         store.set_fact("documents.resume_path", str(self.pdf))
         app = store.start_application(company, "Engineer")
         page = self.browser.new_page()
         self.addCleanup(page.close)
-        page.goto((FIXTURES / name).as_uri())
+        page.goto((FIXTURES / name).as_uri() + hash)
         adapter = adapters.get(ats)
         report = fill_frame(adapter.frame(page), store, app, adapter, overwrite=True)
         return page, report, summarize(report, app)
@@ -177,6 +177,26 @@ class TestFiller(unittest.TestCase):
         # The writing task carries the field's instructions.
         why = next(t for t in summary["needs_ai"] if t["question"] == "Why Acme Robotics?")
         self.assertIn("150 words", why["instructions"])
+
+    def test_long_list_is_searched_for_the_exact_name(self):
+        # Opened, the School list shows only its first entries (A...): jobfill searches it for the stored name.
+        page, report, summary = self.run_fixture("school_search_like.html", "greenhouse", "Acme Capital")
+        shown = self.dom(page, "() => Array.from(document.querySelectorAll('.select__single-value')).map(e => e.textContent)")
+        self.assertEqual(shown, ["University of Wisconsin, Madison", ""])   # same name, other punctuation
+        # The bachelor's school is not in the catalogue: asked, with what the searches found as choices.
+        [ask] = [v for v in summary["needs_user"] if v["label"] == "School"]
+        self.assertIn("Universidad Nacional de Colombia", ask["choices"])
+        self.assertTrue(ask["set_with"])
+
+    def test_list_search_never_picks_a_look_alike(self):
+        # "Wisconsin" finds Milwaukee and Eau Claire, "Madison" finds James Madison: none of them is the school.
+        page, report, summary = self.run_fixture("school_search_like.html", "greenhouse", "Acme Capital",
+                                                 hash="#nomadison")
+        shown = self.dom(page, "() => Array.from(document.querySelectorAll('.select__single-value')).map(e => e.textContent)")
+        self.assertEqual(shown, ["", ""])
+        asks = [v for v in summary["needs_user"] if v["label"] == "School"]
+        self.assertEqual(len(asks), 2)
+        self.assertIn("University of Wisconsin-Milwaukee", asks[0]["choices"])
 
     def test_ashby_like_form(self):
         page, report, summary = self.run_fixture("ashby_like.html", "ashby", "Acme AI")

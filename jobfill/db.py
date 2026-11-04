@@ -245,6 +245,17 @@ def _canonicalize_choice_facts(conn: sqlite3.Connection, ts: str) -> None:
                          "VALUES (?,?,?, 'migration', ?)", (r["key"], r["value"], new, ts))
 
 
+def meta_value(conn: sqlite3.Connection, key: str, create=None) -> str | None:
+    """A value kept in the meta table; ``create()`` makes and stores it the first time."""
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    if row or create is None:
+        return row["value"] if row else None
+    value = create()
+    with conn:
+        conn.execute("INSERT INTO meta (key, value) VALUES (?, ?)", (key, value))
+    return value
+
+
 def _catalog_fingerprint() -> str:
     digest = hashlib.sha1(json.dumps([FACTS, QUESTIONS], sort_keys=True, default=str).encode()).hexdigest()
     return f"{SCHEMA_VERSION}:{digest[:16]}"

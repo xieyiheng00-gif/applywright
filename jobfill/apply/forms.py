@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ..text import closest_options, names_same, normalize
+from ..text import closest_options, names_same, normalize, search_queries
 
 EXTRACT_JS = (Path(__file__).with_name("extract.js")).read_text(encoding="utf-8")
 
@@ -269,6 +269,41 @@ def _fill_combobox(frame, loc, field_id: str, value) -> tuple[bool, str]:
             loc.press("Enter")
         frame.wait_for_timeout(150)
     return True, ""
+
+
+def search_combobox(frame, field_id: str, value: str, alternatives=()) -> tuple[str | None, list[str]]:
+    """Find ``value`` in a search-as-you-type list that shows only its first entries when opened (a catalogue
+    of thousands of schools): type the candidate's earlier picks for it, the name, then its distinctive words,
+    and click a result only if it *is* the name or such a pick. "Wisconsin" also shows "...-Milwaukee"; that
+    is never picked. Returns (the option picked or None, every option the searches showed)."""
+    loc = frame.locator(sel(field_id))
+    is_it = lambda t: names_same(t, value) or any(normalize(t) == normalize(a) for a in alternatives)
+    seen: list[str] = []
+    try:
+        for q in [*alternatives, *search_queries(value)]:
+            loc.click(timeout=5000)
+            loc.fill("")
+            frame.wait_for_timeout(250)
+            before = frame.evaluate(OPTIONS_JS, field_id)
+            loc.type(q[:60], delay=15)
+            texts = before
+            for n in range(16):  # up to ~4s for the results of this search (not the list before it)
+                frame.wait_for_timeout(250)
+                texts = frame.evaluate(OPTIONS_JS, field_id)
+                if texts != before and (any(not NOT_AN_OPTION.match(t) for t in texts) or n >= 5):
+                    break        # results, or still nothing after ~1.5s: this search finds nothing
+            texts = [t if not NOT_AN_OPTION.match(t) else "" for t in texts]
+            seen += [t for t in texts if t and t not in seen]
+            i = next((k for k, t in enumerate(texts) if t and is_it(t)), None)
+            if i is not None:
+                frame.locator(f'[data-jobfill-opt="{i}"]').click(timeout=3000)
+                frame.wait_for_timeout(150)
+                return texts[i], seen
+        loc.press("Escape")
+        loc.fill("")
+    except Exception:
+        pass
+    return None, seen
 
 
 def _fill_dropdown(frame, f: dict, value) -> tuple[bool, str]:
