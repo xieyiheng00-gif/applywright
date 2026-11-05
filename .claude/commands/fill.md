@@ -46,6 +46,9 @@ message: use each `ask` as the question, list `choices` inline, and say "decline
 voluntary EEO items. Never guess a `sensitive` one. Store the answers (`fact set ...`, or
 `record add ...` per the `store` hint) and resolve again; next time these are plain Python. If some
 are still open, send one follow-up message with all of them, keeping their numbers.
+Ending your turn marks the wait in Claude Code (turn hooks). On a runtime without them, run
+`python -m jobfill.timing pause` right before each message that waits for their answer (here, the examples in step 4,
+the review in step 5), so the time they take is not counted as yours.
 
 ## 4. Write the tier-3 answers
 

@@ -549,7 +549,7 @@ class Store:
 
     def applications(self) -> list[dict]:
         return [dict(r) for r in self.conn.execute(
-            "SELECT id, company, role, status, url, created_at FROM applications ORDER BY id DESC")]
+            "SELECT id, company, role, status, ats, url, created_at FROM applications ORDER BY id DESC")]
 
     def update_application(self, app_id: int, **fields) -> dict:
         allowed = {"role", "url", "ats", "country", "source", "referrer", "posting", "notes", "status", "resume"}

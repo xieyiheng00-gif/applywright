@@ -87,6 +87,13 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   "None / N/A if it doesn't apply" answer when a rule has nothing (`text.not_applicable_answer`).
 - Result record: every question of an application is a row in `answers` (status, source, fill);
   `jobfill/report.py` turns it into `data/applications/app<ID>_*.md|json` and `app stats`.
+- Time: `jobfill/timing.py` (standard library only: `pause` and `resume` must stay fast). Every command in
+  `timing.LOGGED` writes a `timing` row from `cli.main`; code under `jobfill/` only calls `phase` around slow steps and
+  `note` for what a row should remember. The silence before a command is charged to that command's application
+  (adding up each application's own gaps would count a batch's minutes several times). `account` turns the log into
+  segments and `Book` answers for one application or all; `app timing`, the report's "Time" section and `app stats`
+  read it. `.claude/settings.json` runs `jobfill/timing.py pause` / `resume` on every turn, so waits for the candidate
+  mark themselves. Accounting is tested on made-up rows in `tests/test_timing.py`.
 - Setup portal: `jobfill/portal/` (`python -m jobfill portal`), a local form laid out like an
   application portal. `layout.py` places every built-in fact on one page in portal wording (a new fact
   in `facts.py` must be placed there too; `tests/test_portal.py` checks); required marks come from the

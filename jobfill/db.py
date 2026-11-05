@@ -142,6 +142,17 @@ CREATE TABLE IF NOT EXISTS answers (
     UNIQUE (application_id, field_key)
 );
 
+-- One row per jobfill command and turn boundary: `app timing` works out from it who spent what (timing.py).
+CREATE TABLE IF NOT EXISTS timing (
+    id              INTEGER PRIMARY KEY,
+    session         TEXT NOT NULL DEFAULT '',  -- the agent session it ran in
+    application_id  INTEGER,                   -- NULL: not about one application
+    name            TEXT NOT NULL,             -- "apply fill", "answer record", ...; pause / resume: turn boundaries
+    started         REAL NOT NULL,             -- seconds since 1970
+    seconds         REAL,                      -- NULL: still running, or it was killed
+    detail          TEXT                       -- JSON: how it ended, phases, slowest fields, question, words, ...
+);
+
 -- Job-portal accounts jobfill created or signed in to. No passwords: they are derived from
 -- secret.env (HMAC-SHA256 of company_key, plus #version after a reset).
 CREATE TABLE IF NOT EXISTS accounts (
