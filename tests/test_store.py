@@ -4,7 +4,7 @@ import unittest
 from jobfill import db
 from jobfill.store import ValidationError
 
-from .helpers import EXAMPLES, fresh_store
+from .helpers import EXAMPLES, fresh_store, temp_dir
 
 
 class TestImport(unittest.TestCase):
@@ -97,9 +97,7 @@ class TestFacts(unittest.TestCase):
 class TestMigration(unittest.TestCase):
     def test_old_answers_table_gets_new_columns(self):
         import sqlite3
-        import tempfile
-        from pathlib import Path
-        path = Path(tempfile.mkdtemp()) / "old.db"
+        path = temp_dir(self) / "old.db"
         old = sqlite3.connect(path)
         old.execute("""CREATE TABLE answers (id INTEGER PRIMARY KEY, application_id INTEGER NOT NULL,
                        field_key TEXT NOT NULL, question_id TEXT, label TEXT NOT NULL, value TEXT NOT NULL,

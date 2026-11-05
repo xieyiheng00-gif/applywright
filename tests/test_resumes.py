@@ -1,13 +1,11 @@
 import sqlite3
-import tempfile
 import unittest
-from pathlib import Path
 
 from jobfill import db, resumes
 from jobfill.resolver import Resolver
 from jobfill.store import Store
 
-from tests.helpers import TODAY, fresh_store
+from tests.helpers import TODAY, fresh_store, temp_dir
 
 CVS = ["main_acme_labs_research_engineer_pre_training.pdf",
        "main_delta_ai_software_engineer_gpu_kernels.pdf",
@@ -19,7 +17,7 @@ class TestTailoredResume(unittest.TestCase):
     """A CV is picked only when its file name names the company and clearly matches the role."""
 
     def setUp(self):
-        self.root = Path(tempfile.mkdtemp())
+        self.root = temp_dir(self)
         folder = self.root / "documents" / "resume" / "tailored cv"
         folder.mkdir(parents=True)
         for name in CVS:
@@ -85,7 +83,7 @@ class TestResumeQuestion(unittest.TestCase):
 
 class TestMigration(unittest.TestCase):
     def test_older_database_gets_the_resume_column(self):
-        path = Path(tempfile.mkdtemp()) / "old.db"
+        path = temp_dir(self) / "old.db"
         conn = sqlite3.connect(path)
         conn.execute("CREATE TABLE applications (id INTEGER PRIMARY KEY, company TEXT NOT NULL, role TEXT, url TEXT, "
                      "ats TEXT, country TEXT, source TEXT, referrer TEXT, posting TEXT, notes TEXT, "
