@@ -94,17 +94,18 @@ python -m playwright install chromium
 ```
 
 1. **Detect** (`apply start <url>`, plain Python): URL rules, then the page HTML (embedded
-   Greenhouse/Lever/iCIMS/Ashby forms, schema.org `JobPosting`). Not a job posting (search page, company
-   board, removed posting, unrelated page) is an error. Greenhouse and Lever postings are also read
-   through their public APIs, so the posting text costs no browsing.
+   Greenhouse/Lever/iCIMS/Ashby/Workable forms, schema.org `JobPosting`). Not a job posting (search page, company
+   board, removed posting, unrelated page) is an error. Greenhouse, Lever, Ashby and Workable postings are also
+   read through their public APIs, so the posting text costs no browsing.
 2. **Fill**, by system:
 
 | System | Who fills | Notes |
 |---|---|---|
 | Greenhouse, Lever, iCIMS, Ashby | jobfill's Playwright filler (`apply fill`) | visible Chromium window that stays open; React dropdowns, autocompletes, radio/checkbox groups, yes/no toggle buttons, resume upload; re-reads the form for follow-up questions; iCIMS email step and multi-page `apply next` |
 | Workday | `jobfill login` (you run it), then the Playwright filler | Apply → Apply Manually → sign in / create account; multi-page `apply next`; search-and-pick menus, including two-level ones (Job Boards → LinkedIn), read by their pills; "Select One" dropdowns |
-| Company portals (Amazon, TikTok, Google, ...) and other ATSs (SmartRecruiters, Workable, ...) | the agent in the built-in browser; portals that need an account use the jobfill window (`--ats generic`) so the login carries over | answers still come from `jobfill resolve` |
-| LinkedIn / Indeed listings | the agent follows the employer's apply link first | |
+| Workable (`apply.workable.com/<company>/j/<code>`, `<company>.workable.com`, company pages linking or framing it) | jobfill's Playwright filler | one page; declines the optional cookies (the banner blocks the form until answered); Education / Experience entered one at a time (+ Add, fill, Update; existing cards count, an editor the candidate opened is left alone); date pickers typed key by key (Workable takes no date after the current month: an expected graduation is dropped by the picker and reported under `fill_failed`, the entry reads as ongoing); phone country set by the stored code; "Address" answered as city, region and country; yes/no and choice boxes, read-only selects, the privacy consent; never uses "Autofill application"; a Cloudflare Turnstile check at submit is the candidate's. EEO is an optional survey Workable shows after Submit (US jobs), left to the candidate |
+| Company portals (Amazon, TikTok, Google, ...) and other ATSs (SmartRecruiters, Jobvite, ...) | the agent in the built-in browser; portals that need an account use the jobfill window (`--ats generic`) so the login carries over | answers still come from `jobfill resolve` |
+| LinkedIn / Indeed / Jobs by Workable listings | the agent follows the employer's apply link first | |
 
 **Tailored CVs.** Keep one CV per posting anywhere under `documents/resume/` (e.g.
 `documents/resume/tailored cv/main_acme_labs_research_engineer_pre_training.pdf`). `apply start`
@@ -264,7 +265,7 @@ jobfill/
   matcher.py    label -> question              derive.py  plain-Python answer rules
   resolver.py   fields -> answers / AI tasks   cli.py     commands
   apply/        /apply: detect.py (which system), extract.js + forms.py (read/fill any form),
-                adapters.py (Greenhouse/Lever/iCIMS/Ashby quirks), runner.py, browser.py (shared window)
+                adapters.py (Greenhouse/Lever/iCIMS/Ashby/Workday/Workable quirks), runner.py, browser.py (shared window)
   report.py     per-application result record (data/applications/)
   portal/       setup portal: layout.py (pages and wording), form.py (values in and out through the
                 store), server.py (127.0.0.1, key per database), static/ (the page)

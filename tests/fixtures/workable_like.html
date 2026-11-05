@@ -1,0 +1,344 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Software Engineer - Acme Robotics - Application</title>
+<style>
+  body { font-family: sans-serif; margin: 0; }
+  main { width: 640px; margin: 0 auto 120px; }
+  .styles--3IYUq { position: relative; margin: 14px 0; }
+  .styles--3aPac { display: block; }
+  input[type=text], input[type=email], input[type=tel], textarea { width: 100%; box-sizing: border-box; padding: 6px; }
+  [data-role=dropzone] { border: 1px dashed #999; padding: 12px; position: relative; }
+  [data-role=dropzone] input[type=file] { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  fieldset[role=radiogroup] { display: flex; gap: 6px; border: 0; padding: 0; }
+  [role=radio] { border: 1px solid #999; padding: 4px 10px; cursor: pointer; }
+  [role=radio][aria-checked=true] { background: #00756a; color: #fff; }
+  [role=radio] input, [role=checkbox] input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
+  [role=checkbox] { display: inline-block; width: 16px; height: 16px; border: 1px solid #999; position: relative; cursor: pointer; }
+  [role=checkbox][aria-checked=true] { background: #00756a; }
+  .styles--2N29s { position: relative; }
+  dialog.styles--3-QiA { position: absolute; left: 0; top: 100%; margin: 0; z-index: 20; width: 100%; height: 160px;
+                         background: #fff; border: 1px solid #ccc; padding: 0; }
+  .react-datepicker__input-container { position: relative; }
+  .react-datepicker-popper { position: absolute; left: 0; top: 100%; z-index: 20; width: 100%; height: 220px;
+                             background: #eef; border: 1px solid #99c; }
+  .iti { display: flex; gap: 4px; position: relative; }
+  .iti__country-selector { position: absolute; top: 100%; left: 0; z-index: 20; background: #fff; border: 1px solid #ccc; }
+  .iti__hide { display: none; }
+  [data-ui=backdrop] { position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, .4); }
+  [data-ui=cookie-consent] { position: fixed; left: 0; right: 0; bottom: 0; z-index: 101; background: #fff; padding: 16px; }
+  .styles--hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; }
+  .styles--33eUF { color: #c00; }
+</style></head>
+<body>
+<!-- Structure mirrors apply.workable.com/<company>/j/<shortcode>/apply/ (React form, 2026-11), read from a live
+     posting: data-ui hooks; labels as <span id=...> referenced by aria-labelledby; the "Autofill application"
+     box (import a resume); intl-tel-input phone with a country preselected from the visitor's IP (here +30);
+     "Address" prefilled from the IP; Education / Experience entered one at a time ("+ Add" opens an editor,
+     "Update" saves it as a card); react-datepicker MM/YYYY inputs that drop a value set at once; yes/no and
+     choice questions as role=radio boxes around aria-hidden inputs; a select as a read-only combobox whose list
+     Escape does not close; the privacy consent as a role=checkbox box whose label holds a link; a hidden
+     Cloudflare Turnstile slot (#captcha shows it); a cookie banner whose backdrop covers the page until answered.
+     #nosave makes saving an Experience entry fail; #maxdate=YYYY-MM makes the date pickers drop later dates
+     (live, Workable takes no date after the current month). -->
+<main role="main">
+<nav><a data-ui="overview-tab" href="#">Overview</a> <a data-ui="application-form-tab" aria-current="page" href="#">Application</a></nav>
+<form class="styles--2I-rr" data-ui="application-form" novalidate>
+  <div class="styles--1euHv"><div class="styles--VzPaX"><div><strong>Autofill application</strong></div>
+    <p>Save time by importing your resume in one of the following formats: .pdf, .doc, .docx, .odt, or .rtf.</p></div>
+    <div class="styles--11blb" data-ui="autofill-button"><button aria-haspopup="true" aria-expanded="false" type="button"
+      onclick="window.autofillUsed = true"><span>Import resume from</span></button></div></div>
+  <span><span class="styles--33eUF">*</span>&nbsp;<span>Required fields</span></span>
+
+  <section data-ui="section"><div><h2 id="section-0_section_name">Personal information</h2></div>
+    <div data-ui="section-fields">
+      <div class="styles--3IYUq"><label class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="firstname_label"><strong>First name</strong></span></span></span>
+        <div data-role="illustrated-input"><div class="styles--3qHIU"><input aria-required="true" id="firstname" maxlength="127" data-ui="firstname" name="firstname" aria-labelledby="firstname_label" required type="text" value=""></div></div></label></div>
+      <div class="styles--3IYUq"><label class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="lastname_label"><strong>Last name</strong></span></span></span>
+        <div data-role="illustrated-input"><div class="styles--3qHIU"><input aria-required="true" id="lastname" maxlength="127" data-ui="lastname" name="lastname" aria-labelledby="lastname_label" required type="text" value=""></div></div></label></div>
+      <div class="styles--3IYUq"><label class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="email_label"><strong>Email</strong></span></span></span>
+        <div data-role="illustrated-input"><div class="styles--3qHIU"><input aria-required="true" id="email" maxlength="255" data-ui="email" name="email" aria-labelledby="email_label" required type="email" value=""></div></div></label></div>
+      <div class="styles--3IYUq"><label class="styles--3aPac"><span class="styles--1-9tY">
+        <span><span class="styles--QTMDv" id="headline_label"><strong>Headline</strong></span><span class="styles--f-uLT">(Optional)</span></span></span>
+        <div data-role="illustrated-input"><div class="styles--3qHIU"><input aria-required="false" id="headline" maxlength="255" data-ui="headline" name="headline" aria-labelledby="headline_label" type="text" value=""></div></div></label></div>
+      <div class="styles--3IYUq"><div class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="phone_label"><strong>Phone</strong></span></span></span>
+        <div data-ignore-focus="true" data-ui="phone"><div data-role="illustrated-input"><div class="styles--3qHIU">
+          <div class="iti iti--input-container iti--has-country-selector iti--show-flags iti--inline-country-selector">
+            <div class="iti__country-container">
+              <button type="button" class="iti__selected-country" aria-expanded="false" aria-label="Change country for phone number, currently selected Greece (+30)" aria-haspopup="dialog" aria-controls="iti-0__country-selector">
+                <div class="iti__selected-country-primary"><div class="iti__flag iti__gr"></div></div><div class="iti__selected-dial-code">+30</div></button>
+              <div id="iti-0__country-selector" class="iti__country-selector iti__hide" role="dialog" aria-modal="true">
+                <ul class="iti__country-list" id="iti-0__country-listbox" role="listbox" aria-label="List of countries">
+                  <li id="iti-0__item-us" class="iti__country" tabindex="-1" role="option" aria-selected="false" data-dial-code="1" data-iso2="us"><span class="iti__country-name">United States <span class="iti__dial-code">(+1)</span></span></li>
+                  <li id="iti-0__item-gb" class="iti__country" tabindex="-1" role="option" aria-selected="false" data-dial-code="44" data-iso2="gb"><span class="iti__country-name">United Kingdom <span class="iti__dial-code">(+44)</span></span></li>
+                  <li id="iti-0__item-ca" class="iti__country" tabindex="-1" role="option" aria-selected="false" data-dial-code="1" data-iso2="ca"><span class="iti__country-name">Canada <span class="iti__dial-code">(+1)</span></span></li>
+                  <li id="iti-0__item-gr" class="iti__country" tabindex="-1" role="option" aria-selected="true" data-dial-code="30" data-iso2="gr"><span class="iti__country-name">Greece <span class="iti__dial-code">(+30)</span></span></li>
+                  <li id="iti-0__item-mx" class="iti__country" tabindex="-1" role="option" aria-selected="false" data-dial-code="52" data-iso2="mx"><span class="iti__country-name">Mexico <span class="iti__dial-code">(+52)</span></span></li>
+                </ul></div></div>
+            <input aria-required="true" aria-labelledby="phone_label" maxlength="255" required aria-describedby="phone_helper" id="input_phone" name="phone" type="tel" class="iti__tel-input" data-intl-tel-input-id="0" autocomplete="off" value="">
+          </div></div></div></div></div>
+        <div><div><span class="styles--f-uLT" id="phone_helper">The hiring team may use this number to contact you about this job.</span></div></div></div>
+      <div class="styles--3IYUq"><label class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="address_label"><strong>Address</strong></span></span></span>
+        <div data-role="illustrated-input"><div class="styles--3qHIU"><input aria-required="true" id="address" data-ui="address" name="address" aria-labelledby="address_label" aria-describedby="address_helper" required type="text" value="Athens, Greece"></div></div></label>
+        <div><div><span class="styles--f-uLT" id="address_helper">Include your city, region, and country, so that employers can easily manage your application.</span></div></div></div>
+      <div class="styles--3IYUq styles--hidden"><label class="styles--3aPac"><div data-role="illustrated-input"><div><input id="city" aria-hidden="true" tabindex="-1" name="city" type="text" value=""></div></div></label></div>
+      <div class="styles--3IYUq styles--hidden"><label class="styles--3aPac"><div data-role="illustrated-input"><div><input id="postcode" aria-hidden="true" tabindex="-1" name="postcode" type="text" value=""></div></div></label></div>
+      <div class="styles--3IYUq styles--hidden"><label class="styles--3aPac"><div data-role="illustrated-input"><div><input id="country" aria-hidden="true" tabindex="-1" name="country" type="text" value=""></div></div></label></div>
+    </div></section>
+
+  <section data-ui="section"><div><h2 id="section-1_section_name">Profile</h2></div>
+    <div data-ui="section-fields">
+      <div class="styles--1YIkW" data-ui="education"><div class="styles--36XiB"><p id="education_label">Education&nbsp;<small>(Optional)</small></p>
+        <button data-ui="add-section" aria-label="Add Education" type="button">+ Add</button></div></div>
+      <div class="styles--1YIkW" data-ui="experience"><div class="styles--36XiB"><p id="experience_label">Experience&nbsp;<small>(Optional)</small></p>
+        <button data-ui="add-section" aria-label="Add Experience" type="button">+ Add</button></div></div>
+      <div class="styles--3IYUq"><label class="styles--3aPac"><span class="styles--1-9tY">
+        <span><span class="styles--QTMDv" id="summary_label"><strong>Summary</strong></span><span class="styles--f-uLT">(Optional)</span></span></span>
+        <div data-role="illustrated-input"><div class="styles--3qHIU"><textarea aria-required="false" id="summary" data-ui="summary" name="summary" aria-labelledby="summary_label" rows="5"></textarea></div></div></label></div>
+      <div class="styles--2mJeY"><div class="styles--3IYUq"><div class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="res_label"><strong>Resume</strong></span></span></span>
+        <div class="styles--1L916" data-role="dropzone"><div class="styles--wcS1q" id="res_preview"></div>
+          <div><label tabindex="0" role="button" for="input_files_input_r1" id="description_input_r1" aria-describedby="res_label">Choose file</label>
+            <span class="styles--f-uLT">or drag and drop here</span></div>
+          <input data-ui="resume" tabindex="-1" id="input_files_input_r1" type="file" aria-labelledby="res_label description_input_r1" accept=".pdf,.doc,.docx,.odt,.rtf"></div></div></div></div>
+    </div></section>
+
+  <section data-ui="section"><div><h2 id="section-2_section_name">Details</h2></div>
+    <div data-ui="section-fields">
+      <div class="styles--3IYUq"><label class="styles--3aPac"><span class="styles--1-9tY">
+        <span><span class="styles--QTMDv" id="cover_letter_label"><strong>Cover letter</strong></span><span class="styles--f-uLT">(Optional)</span></span></span>
+        <div data-role="illustrated-input"><div class="styles--3qHIU"><textarea aria-required="false" id="cover_letter" maxlength="200000" data-ui="cover_letter" name="cover_letter" aria-labelledby="cover_letter_label" rows="5"></textarea></div></div></label></div>
+      <div class="styles--3IYUq"><label class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="QA_1_label"><strong>What are your annual salary expectations in USD?</strong></span></span></span>
+        <div data-role="illustrated-input"><div class="styles--3qHIU"><input aria-required="true" id="QA_1" maxlength="127" data-ui="QA_1" name="QA_1" aria-labelledby="QA_1_label" required type="text" value=""></div></div></label></div>
+
+      <div class="styles--3IYUq"><div class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="q2_label"><strong>Are you legally authorized to work in the United States?</strong></span></span></span>
+        <div class="styles--Bnumk"><fieldset role="radiogroup" data-ui="QA_2" aria-labelledby="q2_label">
+          <div data-ui="option" aria-labelledby="q2_label radio_label_q2y" id="wrapper_q2y" role="radio" aria-checked="false" aria-required="true"><label>
+            <input aria-required="true" required id="q2y" tabindex="-1" aria-hidden="true" type="radio" name="QA_2" value="true"><div><div><span id="radio_label_q2y">YES</span></div></div></label></div>
+          <div data-ui="option" aria-labelledby="q2_label radio_label_q2n" id="wrapper_q2n" role="radio" aria-checked="false" aria-required="true"><label>
+            <input aria-required="true" required id="q2n" tabindex="-1" aria-hidden="true" type="radio" name="QA_2" value="false"><div><div><span id="radio_label_q2n">NO</span></div></div></label></div>
+        </fieldset></div></div></div>
+
+      <div class="styles--3IYUq"><div class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="q3_label"><strong>Will you now or in the future require sponsorship to work in the United States?</strong></span></span></span>
+        <div class="styles--Bnumk"><fieldset role="radiogroup" data-ui="QA_3" aria-labelledby="q3_label">
+          <div data-ui="option" aria-labelledby="q3_label radio_label_q3y" id="wrapper_q3y" role="radio" aria-checked="false" aria-required="true"><label>
+            <input aria-required="true" required id="q3y" tabindex="-1" aria-hidden="true" type="radio" name="QA_3" value="true"><div><div><span id="radio_label_q3y">YES</span></div></div></label></div>
+          <div data-ui="option" aria-labelledby="q3_label radio_label_q3n" id="wrapper_q3n" role="radio" aria-checked="false" aria-required="true"><label>
+            <input aria-required="true" required id="q3n" tabindex="-1" aria-hidden="true" type="radio" name="QA_3" value="false"><div><div><span id="radio_label_q3n">NO</span></div></div></label></div>
+        </fieldset></div></div></div>
+
+      <div class="styles--3IYUq"><div class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="QA_4_label"><strong>What is your level of English?</strong></span></span></span>
+        <div data-ui="QA_4" class="styles--2N29s" data-open="false" data-input-type="select" data-options="Fluent|Intermediate|Basic">
+          <label class="styles--2bW8g"><div data-role="illustrated-input"><div class="styles--3qHIU">
+            <input id="input_QA_4_input" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-owns="input_QA_4_listbox" aria-controls="input_QA_4_listbox" aria-autocomplete="none" autocomplete="off" aria-labelledby="QA_4_label" placeholder="Select an option…" type="text" readonly value=""></div></div></label>
+          <input name="QA_4" required tabindex="-1" aria-hidden="true" value=""></div></div></div>
+
+      <div class="styles--3IYUq"><div class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="q5_label"><strong>How did you hear about this job?</strong></span></span></span>
+        <div class="styles--Bnumk"><fieldset role="radiogroup" data-ui="QA_5" aria-labelledby="q5_label">
+          <div data-ui="option" role="radio" aria-checked="false" id="wrapper_q5a"><label><input required id="q5a" tabindex="-1" aria-hidden="true" type="radio" name="QA_5" value="501"><div><div><span>Company website</span></div></div></label></div>
+          <div data-ui="option" role="radio" aria-checked="false" id="wrapper_q5b"><label><input required id="q5b" tabindex="-1" aria-hidden="true" type="radio" name="QA_5" value="502"><div><div><span>LinkedIn</span></div></div></label></div>
+          <div data-ui="option" role="radio" aria-checked="false" id="wrapper_q5c"><label><input required id="q5c" tabindex="-1" aria-hidden="true" type="radio" name="QA_5" value="503"><div><div><span>Indeed</span></div></div></label></div>
+          <div data-ui="option" role="radio" aria-checked="false" id="wrapper_q5d"><label><input required id="q5d" tabindex="-1" aria-hidden="true" type="radio" name="QA_5" value="504"><div><div><span>Referral</span></div></div></label></div>
+        </fieldset></div></div></div>
+
+      <div class="styles--3IYUq"><label class="styles--3aPac"><span class="styles--1-9tY"><span class="styles--33eUF"><strong>*</strong></span>
+        <span><span class="styles--QTMDv" id="QA_6_label"><strong>Why do you want to join Acme Robotics?</strong></span></span></span>
+        <div data-role="illustrated-input"><div class="styles--3qHIU"><textarea aria-required="true" required id="QA_6" data-ui="QA_6" name="QA_6" aria-labelledby="QA_6_label" rows="5"></textarea></div></div></label></div>
+    </div></section>
+
+  <section data-ui="section"><div data-ui="section-fields"><div class="styles--1C6Ij" data-ui="gdpr"><div class="styles--3IYUq">
+    <label class="styles--3aPac"><label class="styles--2dcpC" data-ui="gdpr" data-checked="false">
+      <div class="styles--3muiL" aria-labelledby="checkbox_label_gdpr" role="checkbox" aria-checked="false" tabindex="0" id="gdpr_box">
+        <input tabindex="-1" aria-hidden="true" type="checkbox" name="gdpr"></div>
+      <span class="styles--QTMDv" id="checkbox_label_gdpr"><span>I have read, understand and accept the content of the
+        <a href="https://example.invalid/privacy" target="_blank">Privacy Notice</a> and consent to the processing of my data as part of this application.</span></span>
+    </label></label></div></div></div></section>
+
+  <div id="turnstile-container-1" hidden></div>
+  <button data-ui="apply-button" type="submit">Submit application</button>
+</form>
+</main>
+<div><div data-ui="backdrop"></div>
+  <div data-ui="cookie-consent" role="dialog" aria-modal="true" aria-label="Cookie Consent" tabindex="-1">
+    <span>This website uses cookies to improve user's experience, personalise ads and analyse traffic.</span>
+    <div><button data-ui="cookie-consent-settings">Cookies settings</button>
+      <div><button data-ui="cookie-consent-accept">Accept all</button><button data-ui="cookie-consent-decline">Decline all</button></div></div></div></div>
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const el = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
+const flags = location.hash;
+window.submitted = false; window.autofillUsed = false; window.cookieChoice = null;
+
+// Cookie banner: its backdrop covers the page until it is answered.
+for (const [ui, choice] of [["cookie-consent-accept", "accept"], ["cookie-consent-decline", "decline"]]) {
+  $(`[data-ui=${ui}]`).addEventListener("click", () => {
+    window.cookieChoice = choice; $("[data-ui=backdrop]").remove(); $("[data-ui=cookie-consent]").remove();
+  });
+}
+$("form").addEventListener("submit", (e) => { e.preventDefault(); window.submitted = true; });
+
+// role=radio / role=checkbox boxes around hidden inputs.
+function wireRadio(box) {
+  box.addEventListener("click", () => {
+    const group = box.closest("[role=radiogroup]");
+    $$("[role=radio]", group).forEach((r) => { r.setAttribute("aria-checked", "false"); r.querySelector("input").checked = false; });
+    box.setAttribute("aria-checked", "true"); box.querySelector("input").checked = true;
+  });
+}
+function wireCheckbox(box, onChange) {
+  box.addEventListener("click", (e) => {
+    if (e.target.closest("a")) return;
+    e.preventDefault();
+    const on = box.getAttribute("aria-checked") !== "true";
+    box.setAttribute("aria-checked", String(on)); box.querySelector("input").checked = on;
+    const wrap = box.closest("label[data-checked]"); if (wrap) wrap.dataset.checked = String(on);
+    if (onChange) onChange(on);
+  });
+}
+$$("[role=radio]").forEach(wireRadio);
+wireCheckbox($("#gdpr_box"));
+
+// Select: a read-only combobox; its list opens on click and closes on a second click or a pick, not on Escape.
+for (const box of $$("[data-input-type=select]")) {
+  const input = box.querySelector("[role=combobox]"), hidden = box.querySelector("input[aria-hidden]");
+  const id = input.getAttribute("aria-controls");
+  const close = () => { const d = box.querySelector("dialog"); if (d) d.remove(); input.setAttribute("aria-expanded", "false"); box.dataset.open = "false"; };
+  input.addEventListener("click", () => {
+    if (input.getAttribute("aria-expanded") === "true") { close(); return; }
+    const opts = box.dataset.options.split("|").map((t, i) => `<li value="${i + 1}" data-visible="true" id="${id}_${i}" role="option" aria-selected="false">
+      <div role="presentation"><div><span><span data-role="option-label">${t}</span></span></div></div></li>`).join("");
+    box.insertBefore(el(`<dialog class="styles--3-QiA" id="${id.replace("listbox", "dialog")}" role="presentation" open><div data-role="dialog-container"><div>
+      <ul role="listbox" tabindex="-1" id="${id}">${opts}</ul></div></div></dialog>`), hidden);
+    input.setAttribute("aria-expanded", "true"); box.dataset.open = "true";
+    $$("[role=option]", box).forEach((o) => o.addEventListener("click", () => {
+      input.value = o.innerText.trim(); hidden.value = o.getAttribute("value"); close();
+    }));
+  });
+}
+
+// Phone (intl-tel-input): a typed "+<code>" picks the country and leaves the national number in the box.
+(function () {
+  const input = $("#input_phone"), button = $(".iti__selected-country"), list = $("#iti-0__country-selector");
+  const select = (li) => {
+    $$("li", list).forEach((x) => x.setAttribute("aria-selected", String(x === li)));
+    $(".iti__selected-dial-code").textContent = "+" + li.dataset.dialCode;
+    button.setAttribute("aria-label", `Change country for phone number, currently selected ${li.querySelector(".iti__country-name").firstChild.textContent.trim()} (+${li.dataset.dialCode})`);
+  };
+  button.addEventListener("click", () => list.classList.toggle("iti__hide"));
+  $$("li", list).forEach((li) => li.addEventListener("click", () => { select(li); list.classList.add("iti__hide"); }));
+  input.addEventListener("blur", () => {
+    const m = input.value.trim().match(/^\+(\d{1,3})\s*(.*)$/);
+    if (!m) return;
+    for (const n of [3, 2, 1]) {
+      const code = (m[1] + m[2].replace(/\D/g, "")).slice(0, n);
+      const li = $$("li", list).find((x) => x.dataset.dialCode === code);
+      if (li) { select(li); input.value = (m[1] + m[2]).replace(/^\+?/, "").slice(code.length).replace(/^[\s-]+/, ""); return; }
+    }
+  });
+})();
+
+// Resume: uploaded as soon as it is chosen, then named in the drop zone.
+$("#input_files_input_r1").addEventListener("change", (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  setTimeout(() => {
+    $("#res_preview").innerHTML = `<section open><div><div data-id="filename"><span>${f.name}</span><span></span></div></div>
+      <div role="menu"><div><button aria-label="delete ${f.name}" data-action="delete" type="button">x</button></div></div></section>`;
+    $("#description_input_r1").textContent = "Replace file";
+  }, 300);
+});
+
+// react-datepicker (MM/YYYY): keeps typed keys only (a value set at once is dropped); opens a calendar under it.
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+function wireDate(input) {
+  const wrap = input.closest(".react-datepicker__input-container");
+  const popper = () => wrap.querySelector(".react-datepicker-popper");
+  const hide = () => { if (popper()) popper().remove(); };
+  input.addEventListener("focus", () => { if (!popper()) wrap.appendChild(el(`<div class="react-datepicker-popper"><div role="dialog">calendar</div></div>`)); });
+  input.addEventListener("keydown", (e) => { input._key = Date.now(); if (e.key === "Escape") hide(); });
+  input.addEventListener("input", () => {
+    if (!input._key || Date.now() - input._key > 300) input.value = input._last || "";
+    input._last = input.value; input._key = 0;
+  });
+  input.addEventListener("blur", () => {
+    hide();
+    const m = input.value.match(/^(\d{2})\/(\d{4})$/), max = flags.match(/maxdate=(\d{4})-(\d{2})/);
+    const late = m && max && m[2] + m[1] > max[1] + max[2];   // Workable: nothing after the current month
+    if (input.value && (!m || late)) { input.value = ""; input._last = ""; }
+  });
+}
+const period = (v) => { const m = (v || "").match(/^(\d{2})\/(\d{4})$/); return m ? `${MONTHS[+m[1] - 1]} ${m[2]}` : ""; };
+
+// Education / Experience: one entry at a time. "+ Add" opens an editor, "Update" saves it as a card.
+const label = (id, text, optional) => `<span class="styles--1-9tY">${optional ? "" : '<span class="styles--33eUF"><strong>*</strong></span>'}
+  <span><span class="styles--QTMDv" id="${id}_label"><strong>${text}</strong></span>${optional ? '<span class="styles--f-uLT">(Optional)</span>' : ""}</span></span>`;
+const text = (id, t, optional) => `<div class="styles--3IYUq"><label class="styles--3aPac">${label(id, t, optional)}
+  <div data-role="illustrated-input"><div><input aria-required="${!optional}" id="${id}" maxlength="255" name="${id}" aria-labelledby="${id}_label" ${optional ? "" : "required"} type="text" value=""></div></div></label></div>`;
+const date = (id, t) => `<div class="styles--3IYUq"><label class="styles--3aPac">${label(id, t, true)}
+  <div class="react-datepicker-wrapper"><div class="react-datepicker__input-container"><div data-role="illustrated-input"><div>
+  <input type="text" aria-readonly="false" inputmode="tel" name="${id}" placeholder="MM/YYYY" value=""><span data-ui="calendar-icon"></span></div></div></div></div></label></div>`;
+const EDITORS = {
+  education: () => text("school", "School") + text("field_of_study", "Field of study", true) + text("degree", "Degree", true)
+    + date("start_date", "Start date") + date("end_date", "End date"),
+  experience: () => text("title", "Title") + text("company", "Company", true) + text("industry", "Industry", true)
+    + `<div class="styles--3IYUq"><label class="styles--3aPac">${label("summary", "Summary", true)}<div data-role="illustrated-input"><div>
+       <textarea aria-required="false" id="summary" name="summary" aria-labelledby="summary_label" rows="5"></textarea></div></div></label></div>`
+    + date("start_date", "Start date") + date("end_date", "End date")
+    + `<div class="styles--3IYUq"><label class="styles--3aPac"><div aria-labelledby="checkbox_label_current" role="checkbox" aria-checked="false" tabindex="0" id="current">
+       <input aria-required="false" tabindex="-1" aria-hidden="true" type="checkbox" name="current"></div>
+       <span id="checkbox_label_current">I currently work here</span></label></div>`,
+};
+const FIRST = { education: "school", experience: "title" };
+for (const kind of Object.keys(EDITORS)) {
+  const box = $(`[data-ui=${kind}]`), add = box.querySelector("[data-ui=add-section]");
+  add.addEventListener("click", () => {
+    let ul = box.querySelector("ul"); if (!ul) { ul = document.createElement("ul"); box.appendChild(ul); }
+    const li = el(`<li><div data-ui="editor">${EDITORS[kind]()}<div>
+      <button data-ui="save-section" type="button">Update</button><button data-ui="cancel-section" type="button">Cancel</button></div></div></li>`);
+    ul.appendChild(li);
+    add.disabled = true; add.setAttribute("aria-disabled", "true");
+    $$(".react-datepicker__input-container input", li).forEach(wireDate);
+    const cur = li.querySelector("#current");
+    if (cur) wireCheckbox(cur, (on) => { const end = li.querySelector("[name=end_date]"); end.disabled = on; if (on) end.value = ""; });
+    li.querySelector("[data-ui=cancel-section]").addEventListener("click", () => { li.remove(); add.disabled = false; add.removeAttribute("aria-disabled"); });
+    li.querySelector("[data-ui=save-section]").addEventListener("click", () => {
+      const first = li.querySelector(`[name=${FIRST[kind]}]`);
+      if (!first.value.trim()) {
+        if (!li.querySelector(`#${FIRST[kind]}_error`)) {
+          first.setAttribute("aria-describedby", `${FIRST[kind]}_error`);
+          first.closest(".styles--3IYUq").appendChild(el(`<span id="${FIRST[kind]}_error">This is a required field.</span>`));
+        }
+        return;
+      }
+      if (kind === "experience" && flags.includes("nosave")) {
+        if (!li.querySelector("#experience_error")) li.querySelector("[data-ui=editor]").appendChild(el(`<span id="experience_error" role="alert">Something went wrong. Please try again.</span>`));
+        return;
+      }
+      const v = (n) => { const i = li.querySelector(`[name=${n}]`); return i ? i.value.trim() : ""; };
+      const current = li.querySelector("#current") && li.querySelector("#current").getAttribute("aria-checked") === "true";
+      const span = [period(v("start_date")), current ? "Current" : period(v("end_date"))].filter(Boolean).join(" - ");
+      const rows = kind === "education" ? [["School", "school"], ["Field of study", "field_of_study"], ["Degree", "degree"]]
+                                        : [["Title", "title"], ["Company", "company"]];
+      li.innerHTML = `<div data-ui="group">${rows.filter(([, n]) => v(n)).map(([t, n]) => `<dl><dt>${t}</dt><dd data-ui="${n}"><span>${v(n)}</span></dd></dl>`).join("")}
+        <dl data-ui="date-range"><dt>Period</dt><dd data-ui="period"><span>${span}</span></dd></dl>
+        <div><a data-ui="edit-section" title="Edit" role="button">e</a><a data-ui="remove-section" title="Delete" role="button">d</a></div></div>`;
+      add.disabled = false; add.removeAttribute("aria-disabled");
+    });
+  });
+}
+
+// Cloudflare Turnstile slot: #captcha shows the check (the real iframe comes from challenges.cloudflare.com).
+if (flags.includes("captcha")) {
+  const slot = $("#turnstile-container-1"); slot.hidden = false;
+  slot.appendChild(el(`<iframe src="about:blank#challenges.cloudflare.com/turnstile" title="Widget containing a Cloudflare security challenge" width="300" height="65"></iframe>`));
+}
+</script>
+</body></html>

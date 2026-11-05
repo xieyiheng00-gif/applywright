@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import date
+from functools import partial
 from pathlib import Path
 
 from .. import report as results
@@ -99,6 +100,11 @@ def start(store, data_dir: Path, url: str, *, company=None, role=None, source=No
 
 # --------------------------------------------------------------------------- fill
 
+def read_fields(frame, adapter, root: str | None, **kw) -> list[dict]:
+    """The fields under ``root``, as the adapter reads them (it may say what a field really asks)."""
+    return adapter.adjust(extract(frame, root, **kw))
+
+
 def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, files: bool = True,
                today: date | None = None, dry_run: bool = False, typed: dict | None = None,
                asked: dict | None = None) -> dict:
@@ -118,16 +124,32 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
     seen: set[str] = set()
     attempts: list[tuple[str, dict, object]] = []   # (field id, field, value): results recorded after the check
     theirs: list[tuple[dict, dict]] = []             # (field, resolver result): answers the candidate gave
+    final: dict[str, dict] = {}                      # each field as read back after filling
     logged = {a["field_key"]: a for a in store.answers(app_id)} if typed is not None else {}
+    custom = partial(adapter.custom_fill, store=store)
     # Repeating sections first (Workday's Work Experience / Education "Add"): one block per stored entry.
-    added = adapter.expand(frame, store, dry_run=dry_run)
-    if added:
-        report["added"] = added
-    for _ in range(MAX_PASSES):
-        fields = extract(frame, adapter.root_selector, known=seen)
+    added = list(adapter.expand(frame, store, dry_run=dry_run))
+
+    def run(root: str | None) -> None:
+        """Fill ``root`` (the form, or one entry block of it), re-reading it for follow-up questions."""
+        for _ in range(MAX_PASSES):
+            if not fill_pass(root) or dry_run:
+                break   # a dry run types nothing, so no follow-up questions can appear
+
+    def check(root: str | None) -> None:
+        """Anything we "filled" in ``root`` that is still empty did not take."""
+        now = {f["id"]: f for f in read_fields(frame, adapter, root, read_options=False)}
+        for fid, entry in report["fields"].items():
+            if entry.get("fill") == "ok" and fid in now and is_empty(now[fid]) and entry["kind"] != "checkbox":
+                entry["fill"] = "failed: value did not stick"
+        final.update(now)
+
+    def fill_pass(root: str | None) -> bool:
+        nonlocal ai_context
+        fields = read_fields(frame, adapter, root, known=seen)
         new = [f for f in fields if f["id"] not in seen]
         if not new:
-            break
+            return False
         report["passes"] += 1
         seen.update(f["id"] for f in fields)
         by_id = {f["id"]: f for f in new}
@@ -179,7 +201,7 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
                     try:
                         ok, note = fill(frame, {**f, "question_id": r.get("question_id"),
                                                 "alternatives": r.get("alternatives")}, value, root=ROOT,
-                                        after=adapter.after_fill, custom=adapter.custom_fill)
+                                        after=adapter.after_fill, custom=custom)
                     except NoExactChoice as e:
                         _ask_candidate(store, app_id, f, r, entry, e, asked)
                         report["fields"][r["id"]] = entry
@@ -192,13 +214,17 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
                 if not dry_run:
                     attempts.append((r["id"], f, r["value"]))
             report["fields"][r["id"]] = entry
-        if dry_run:
-            break   # nothing typed, so no follow-up questions can appear
-    # Verify: anything we "filled" that is still empty did not take.
-    final = {f["id"]: f for f in extract(frame, adapter.root_selector, read_options=False)}
-    for fid, entry in report["fields"].items():
-        if entry.get("fill") == "ok" and fid in final and is_empty(final[fid]) and entry["kind"] != "checkbox":
-            entry["fill"] = "failed: value did not stick"
+        return True
+
+    # Entries edited one at a time (Workable's Education / Experience): the adapter opens a block per stored
+    # entry, it is filled and checked here, and the adapter saves it before opening the next.
+    for block in adapter.entries(frame, store, dry_run=dry_run, notes=added):
+        run(block)
+        check(block)
+    if added:
+        report["added"] = added
+    run(adapter.root_selector)
+    check(adapter.root_selector)
     # One result per field and run, after the check: recording "ok" first and "did not stick" later
     # would reset and bump the failure count every run, so it never reached the hand-off.
     for fid, f, value in attempts:
@@ -427,7 +453,7 @@ def set_field(store, app_id: int, state: dict, page, adapter, field_id: str, val
     if spot["where"] == "earlier" and not here:
         return paused(state, spot, app_id)
     frame = adapter.frame(page)
-    fields = {f["id"]: f for f in extract(frame, adapter.root_selector, read_options=False)}
+    fields = {f["id"]: f for f in read_fields(frame, adapter, adapter.root_selector, read_options=False)}
     f = fields.get(field_id) or fields.get("g-" + field_id)
     if f is None:
         raise ApplyError(f"field {field_id} is not on the page (the candidate may have moved to another page, or "
@@ -439,7 +465,8 @@ def set_field(store, app_id: int, state: dict, page, adapter, field_id: str, val
                         "if they ask you to (--force)."}
     key = _key(store, f)
     try:
-        ok, note = fill(frame, f, value, root=ROOT, after=adapter.after_fill, custom=adapter.custom_fill)
+        ok, note = fill(frame, f, value, root=ROOT, after=adapter.after_fill,
+                        custom=partial(adapter.custom_fill, store=store))
     except NoExactChoice as e:   # the agent's value is not one of the choices either: show them
         return {"field": field_id, "label": f["label"], "ok": False,
                 "note": f"{value!r} is not one of the choices. Closest: {e.offered}"}

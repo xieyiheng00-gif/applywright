@@ -156,6 +156,14 @@ def current_location(ctx):
 
 
 @rule
+def full_location(ctx):
+    """City, region and country, the country always written out: forms that ask for all three (Workable's
+    "Include your city, region, and country") place the candidate by it."""
+    parts = [ctx.fact("address.city"), ctx.opt("address.state"), ctx.fact("address.country")]
+    return Answer(", ".join(str(p) for p in parts if p))
+
+
+@rule
 def url_username(ctx, key):
     url = ctx.fact(key)
     return Answer(url.rstrip("/").split("/")[-1])

@@ -17,7 +17,7 @@ If `$ARGUMENTS` is empty, ask for the job URL and stop.
 | `handler: "unsupported"` | Reply that jobfill does not support this system yet and give the URL to apply manually. Stop. |
 | `handler: "follow"` (LinkedIn, Indeed, ...) | Open the URL in the built-in browser, find the employer's own apply link (not Easy Apply), and run `apply start` again with that link. If there is none (Easy Apply only), say so and stop. |
 | `handler: "agent_check"` | The HTML alone could not tell. Open it in the built-in browser and read the text (`get_page_text`). Not a job posting: reply with the error and stop. A job: look at where "Apply" leads or which iframe holds the form; rerun `apply start` with that apply URL, or with `--ats custom --company "<Company>" --role "<Role>"` for a company portal. |
-| `handler: "python"` (Greenhouse, Lever, iCIMS, Ashby, Workday) | Step 2. |
+| `handler: "python"` (Greenhouse, Lever, iCIMS, Ashby, Workday, Workable) | Step 2. |
 | `handler: "ai"` (Amazon, TikTok, Google, other portals and ATSs) | Step 3, unless the portal needs an account: then rerun `apply start "<url>" --ats generic` so it is filled in the jobfill window, where `jobfill login` signs in, and go to Step 2. |
 
 The output includes `app_id`, company, role, and earlier applications to the same company
@@ -30,7 +30,7 @@ company, none clearly matching the role), ask whether one of them fits and set i
 `python -m jobfill app update <ID> --resume "<file>"` before filling. To swap the file after a fill, set
 it the same way and replace the upload with `apply set --field <resume field> --value "<file>"`.
 
-## Step 2: Python filler (Greenhouse, Lever, iCIMS, Ashby, Workday)
+## Step 2: Python filler (Greenhouse, Lever, iCIMS, Ashby, Workday, Workable)
 
 1. `python -m jobfill apply fill --app <ID>` opens a visible Chromium window (it stays open between
    commands), fills the form from the database, re-reads it for follow-up questions, and prints what
@@ -123,6 +123,14 @@ it the same way and replace the upload with `apply set --field <resume field> --
      page only if they ask you to: `apply fill --here`.
    - Whenever you hand the window to the candidate (questions in the window, a review), `apply watch`
      is how you notice what they did next.
+   Workable is one page: jobfill declines the optional cookies (the banner blocks the form until it is
+   answered), adds Education / Experience one entry at a time (+ Add, fill, Update; cards already there
+   count, and an entry editor the candidate opened is theirs: left alone, see `added`), and answers
+   "Address" as city, region and country. Its date pickers take no date after the current month: an
+   expected graduation comes back under `fill_failed` with that reason and the entry shows as ongoing;
+   tell the candidate, do not retry it. It never uses Workable's "Autofill application" box. A
+   Cloudflare check at submit is a `captcha` blocker for the candidate. Workable asks EEO questions in an
+   optional survey after Submit (US jobs): the candidate answers or skips it there.
 4. Review, in ONE message: every written answer (numbered, with character/word count), any
    `handoff` field still unresolved, and a reminder that the window shows the whole filled form.
    Ask them to check the window, then to say "submit" or list changes.

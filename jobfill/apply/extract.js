@@ -35,10 +35,11 @@
     if (!el.id) return null;
     try { return document.querySelector(`label[for="${CSS.escape(el.id)}"]`); } catch (e) { return null; }
   };
-  // Label of one control: aria-labelledby, <label for>, wrapping <label>, aria-label.
+  // Label of one control: aria-labelledby, <label for>, wrapping <label>, aria-label. Parts that only name the
+  // upload button (Workable labels its file input "Resume" + "Choose file", later "Replace file") are left out.
   const directLabel = (el) => {
     const ids = (el.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean);
-    const viaIds = clean(ids.map((i) => textOf(byId(i))).join(" "));
+    const viaIds = clean(ids.map((i) => textOf(byId(i))).filter((t) => !GENERIC.test(t)).join(" "));
     if (viaIds) return viaIds;
     const l = forLabel(el);
     if (l && textOf(l)) return textOf(l);
@@ -52,7 +53,11 @@
     }
     return clean(el.getAttribute("aria-label"));
   };
-  const GENERIC = /^(attach|upload|choose( a)? files?|browse|select( a)? files?|drop files? here|add( a)? files?|attach files?|upload( a)? files?)$/i;
+  const GENERIC = /^(attach|upload|choose( a)? files?|browse|select( a)? files?|drop files? here|add( a)? files?|attach files?|upload( a)? files?|replace( a)? files?)$/i;
+  // A radio / checkbox drawn as its own element (Workable: a role=radio or role=checkbox box holding an
+  // aria-hidden input). The box is what a person clicks and what says whether it is on.
+  const roleBox = (el) => el.closest("[role=radio], [role=checkbox], [role=switch]");
+  const isOn = (el) => !!el && (el.checked || (roleBox(el) || el).getAttribute("aria-checked") === "true");
   const LABELISH = "label, legend, .application-label, [class*='label' i], [class*='question' i], [class*='title' i], h3, h4, h5, p, span, div";
   const CONTROL = "input:not([type=hidden]):not([type=submit]):not([type=button]), select, textarea";
   // Question text from the surrounding block, used for radio/checkbox groups and unlabeled
@@ -94,6 +99,8 @@
   };
   const sectionOf = (el) => {
     for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+      const ui = a.getAttribute("data-ui");   // Workable: <div data-ui="education"> holds its entry editor
+      if (ui === "education" || ui === "experience") return ui;
       const cls = typeof a.className === "string" ? a.className : "";
       // aria-labelledby: Workday's sections are role=group blocks labelled "Work-Experience-section" etc.
       const key = `${cls} ${a.id || ""} ${a.getAttribute("data-qa") || ""} ${a.getAttribute("aria-labelledby") || ""}`.toLowerCase();
@@ -139,8 +146,20 @@
     }
     return "";
   };
+  // A dropdown's own input may say nothing: its required mark sits on the hidden input that carries the
+  // chosen value for the site's validation (Workable, React-Select), in the same small block.
+  const hiddenRequired = (el) => {
+    let box = el.parentElement;
+    for (let i = 0; i < 4 && box && box !== document.body; i++, box = box.parentElement) {
+      if (box.querySelector("input[aria-hidden=true][required]")) return true;
+      if (Array.from(box.querySelectorAll(CONTROL)).some((c) => c !== el && c.getAttribute("aria-hidden") !== "true")) break;
+    }
+    return false;
+  };
   const required = (el, label) =>
-    el.required || el.getAttribute("aria-required") === "true" || /[*✱]|\(required\)/i.test(label);
+    el.required || el.getAttribute("aria-required") === "true" || /[*✱]|\(required\)/i.test(label)
+    || (roleBox(el) || el).getAttribute("aria-required") === "true"
+    || (el.getAttribute("role") === "combobox" && hiddenRequired(el));
   // Choices already picked in a Workday prompt, read from its pills.
   const pillsOf = (el) => {
     const box = el.closest("[data-automation-id^='formField']") || el.closest("[data-automation-id='multiSelectContainer']")
@@ -167,11 +186,16 @@
     return el.value || "";
   };
 
-  let next = 0;
+  // Ids never repeat on a page, even after tagged fields are gone (a saved Workable entry editor): a new field
+  // must never pass for one read before.
+  let next = window.__jobfillNext || 0;
   document.querySelectorAll("[data-jobfill-id]").forEach((e) => {
     next = Math.max(next, parseInt((e.dataset.jobfillId || "").replace("jf", ""), 10) || 0);
   });
-  const tag = (el) => { if (!el.dataset.jobfillId) el.dataset.jobfillId = "jf" + ++next; return el.dataset.jobfillId; };
+  const tag = (el) => {
+    if (!el.dataset.jobfillId) { el.dataset.jobfillId = "jf" + ++next; window.__jobfillNext = next; }
+    return el.dataset.jobfillId;
+  };
 
   const fields = [];
   const groups = new Map();
@@ -200,22 +224,23 @@
     }
     let type = t === "input" ? (el.getAttribute("type") || "text").toLowerCase() : t;
     if (["hidden", "submit", "button", "reset", "image"].includes(type) || el.disabled) continue;
-    // React-Select keeps an aria-hidden, tabindex=-1 input next to each dropdown for validation.
-    if (el.getAttribute("aria-hidden") === "true" && type !== "file") continue;
+    const choice = type === "radio" || type === "checkbox";
+    // React-Select keeps an aria-hidden, tabindex=-1 input next to each dropdown for validation. A hidden
+    // radio / checkbox inside a role=radio / role=checkbox box is the real answer behind that box (Workable).
+    if (el.getAttribute("aria-hidden") === "true" && type !== "file" && !(choice && roleBox(el))) continue;
     const name = el.getAttribute("name") || "";
     // Bot traps: filling Workday's hidden "beecatcher" (or any honeypot) flags the applicant as a bot.
     if (/captcha|honeypot|recaptcha|hcaptcha|beecatcher/i.test(`${name} ${el.id} ${el.className} ${el.getAttribute("data-automation-id") || ""}`)) continue;
     if (el.closest("[class*='captcha' i]")) continue;
     // "Autofill from resume" panes (Ashby, Greenhouse) are shortcuts, not questions.
     if (el.closest("[class*='autofill' i]")) continue;
-    const choice = type === "radio" || type === "checkbox";
     // The hidden input behind a toggle-button pair (Ashby yes/no) is read as the button group below.
     if (choice && el.parentElement && el.parentElement.querySelector(":scope > button[aria-pressed]")) continue;
     // Likewise the 0x0 input beside a "Select One" button: the button is the question.
     if (el.parentElement && el.parentElement.querySelector(":scope > button[aria-haspopup=listbox]")) continue;
     if (type !== "file") {
       const lab = forLabel(el) || el.closest("label");
-      if (!(shown(el) || (choice && lab && shown(lab)))) continue;
+      if (!(shown(el) || (choice && lab && shown(lab)) || (choice && shown(roleBox(el))))) continue;
     }
 
     if (choice) {
@@ -282,7 +307,7 @@
       const sel = el.selectedOptions && el.selectedOptions[0];
       f.value = sel && sel.value !== "" ? clean(sel.text) : "";
     } else if (kind === "checkbox") {
-      f.value = el.checked;
+      f.value = isOn(el);
     } else if (kind === "combobox") {
       f.value = comboValue(el);
     } else if (kind === "selectinput") {
@@ -347,11 +372,18 @@
     if (f.option_refs) {
       f.options = f.option_refs.map((r) => r[0]);
       if (f.kind !== "buttons") {   // toggle buttons already carry their pressed value
-        f.value = f.option_refs.filter((r) => { const e = document.querySelector(`[data-jobfill-id="${r[1]}"]`); return e && e.checked; }).map((r) => r[0]);
+        f.value = f.option_refs.filter((r) => isOn(document.querySelector(`[data-jobfill-id="${r[1]}"]`))).map((r) => r[0]);
         if (f.kind === "radio") f.value = f.value[0] || "";
       }
     }
-    if (f.section) {
+    // An entry block the adapter numbered itself (Workable edits one entry at a time, so the open editor is
+    // always the only "School" on the page): its fields answer that stored entry.
+    const ownEl = document.querySelector(`[data-jobfill-id="${f.id.replace(/^g-/, "")}"]`);
+    const entry = f.section && ownEl && ownEl.closest("[data-jobfill-index]");
+    if (entry) {
+      f.index = parseInt(entry.getAttribute("data-jobfill-index"), 10) || 0;
+      f.entry = true;
+    } else if (f.section) {
       const key = f.section + "|" + f.label.toLowerCase();
       f.index = seen.get(key) || 0;
       seen.set(key, f.index + 1);
