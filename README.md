@@ -177,35 +177,8 @@ Plain Python answered 92% of the answered questions without any AI tokens.
 `python -m jobfill app report <ID>` regenerates it; `python -m jobfill app stats` totals how much
 plain Python, the AI and you answered across all applications.
 
-## Where the time goes
-
-Every jobfill command logs when it ran, so filling can be made faster where it is slow. The record of each
-application gets a "Time" section, and:
-
-```bash
-python -m jobfill app timing
-```
-
-```bash
-python -m jobfill app timing 62
-```
-
-The first shows each run (a batch, as a whole), each application, the agent's time per written answer, the
-applications a robot could not fill and how much work went in before that was clear, and the slowest steps and
-fields inside jobfill. The second shows every step of one application.
-
-| Time | How it is known |
-|---|---|
-| jobfill | Measured inside each command. `apply fill` also splits it: connecting to the browser, opening the page, reading the form, resolving, typing, per field. |
-| The agent | The silence before a command is the agent working towards it. Before `answer check` / `answer record` it is writing that answer (answers checked in one go share it by length); before `learn`, `pending`, `match` it is classifying questions; before a command with no application it belongs to the batch. Anything it does in between (driving a browser, looking something up) is in here too, under "everything else". |
-| Waiting on you | `apply watch`, `login` and the time around it, and the wait from the agent ending its turn to your reply (turn hooks in `.claude/settings.json`). |
-| Nobody | A silence over 15 minutes counts for no one and ends the run. |
-| Giving up | `python -m jobfill app giveup <ID> --why <reason> --reason "..."`, when the agent concludes a robot cannot fill it. Links `apply start` refuses are listed too. |
-
-The hooks take about a tenth of a second per turn, print nothing, and log only in sessions that have run a jobfill
-command. On a runtime without such hooks, the agent runs `python -m jobfill.timing pause` right before a message that
-waits for you; a wait it forgets, under 15 minutes, counts as the agent's. Several agent sessions on one database are
-kept apart by `CLAUDE_CODE_SESSION_ID` (or `JOBFILL_SESSION`); applications started before this existed have no times.
+When a robot cannot fill an application, the agent says so with `python -m jobfill app giveup <ID> --why <reason>
+--reason "..."`: the status becomes `manual` and the record says why, so you can see which ones are yours to finish.
 
 ## Field JSON (what a form filler sends to `resolve`)
 
@@ -278,7 +251,7 @@ context --question <id> [--app ID] [--max-chars N]      (AI context for one tier
 answer check|record|list                                 (check a written answer, then log it)
 apply detect|start <url> | apply fill|set|next|submit|watch|status --app ID | apply close
 login --app ID  (you run it) | account email|list|password|rotate|forget | mail test
-app start|list|show|update
+app start|list|show|update|giveup
 pending | learn <pending_id> --alias-of|--new-question|--ignore
 question list|show|alias | catalog export-learned|import-learned
 ```
@@ -297,13 +270,54 @@ jobfill/
   apply/        /apply: detect.py (which system), extract.js + forms.py (read/fill any form),
                 adapters.py (Greenhouse/Lever/iCIMS/Ashby/Workday/Workable quirks), runner.py, browser.py (shared window)
   report.py     per-application result record (data/applications/)
-  timing.py     where the time went: command log, agent / jobfill / candidate accounting (`app timing`)
+  timing.py     development: where the time went (off unless JOBFILL_TIMING is set)
   portal/       setup portal: layout.py (pages and wording), form.py (values in and out through the
                 store), server.py (127.0.0.1, key per database), static/ (the page)
 .claude/commands/  agent workflows: setup, apply, fill, learn, update (AGENTS.md points other agents here)
 documents/      your source documents (gitignored)     data/  the database and drafts (gitignored)
 examples/       fictional profile + sample form        tests/ unittest suite
 ```
+
+## Measuring time (for development)
+
+To find out where filling is slow, turn on the timing log for one checkout by putting this in its
+`.claude/settings.local.json` (gitignored), then starting a new session there:
+
+```json
+{
+  "env": {"JOBFILL_TIMING": "1"},
+  "hooks": {
+    "Stop": [{"hooks": [{"type": "command", "command": "python \"$CLAUDE_PROJECT_DIR/jobfill/timing.py\" pause --hook 2>/dev/null || true"}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python \"$CLAUDE_PROJECT_DIR/jobfill/timing.py\" resume --hook 2>/dev/null || true"}]}]
+  }
+}
+```
+
+`JOBFILL_TIMING` makes every jobfill command log when it ran; the hooks mark the wait from the agent ending its turn
+to your reply. They take about a tenth of a second per turn and print nothing. Each application's record then gets a
+"Time" section, and:
+
+```bash
+python -m jobfill app timing
+```
+
+```bash
+python -m jobfill app timing 62
+```
+
+The first shows each run (a batch, as a whole), each application, the agent's time per written answer, the applications
+given up on and the work before that, and the slowest steps and fields inside jobfill. The second shows every step of
+one application.
+
+| Time | How it is known |
+|---|---|
+| jobfill | Measured inside each command. `apply fill` also splits it: connecting to the browser, opening the page, reading the form, resolving, typing, per field. |
+| The agent | The silence before a command is the agent working towards it, whatever it did meanwhile. Before `answer check` / `answer record` it is writing that answer (answers checked in one go share it by length); before `learn`, `pending`, `match` it is classifying questions; before a command with no application it belongs to the batch. |
+| Waiting on you | `apply watch`, `login` and the time around it, and the wait the hooks mark. A wait inside the agent's turn (a question tool) counts as the agent's. |
+| Nobody | A silence over 15 minutes counts for no one and ends the run. |
+
+Several agent sessions on one database are kept apart by `CLAUDE_CODE_SESSION_ID` (or `JOBFILL_SESSION`). A link that
+ends with no application (Easy Apply only) shows only in its run's clock.
 
 ## Privacy
 

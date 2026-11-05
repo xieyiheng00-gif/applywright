@@ -18,6 +18,9 @@ from .text import company_key, normalize
 from .writing import check_answer, mentions
 
 
+GIVE_UP_WHY = ("unsupported", "login", "captcha", "widget", "closed", "other")
+
+
 def _out(obj) -> None:
     timing.result(obj)
     print(obj if isinstance(obj, str) else dumps(obj))
@@ -253,7 +256,7 @@ def cmd_app(store, args):
         app = store.application(args.id)
         info = book.application(args.id, timeline=True)
         if info is None:
-            return _out({"id": args.id, "note": "Not timed: this application started before jobfill kept time."})
+            return _out({"id": args.id, "note": f"Not timed. {timing.OFF}"})
         _out(info if args.json else timing.markdown_application(app, info))
     elif args.action == "giveup":
         _give_up(store, args)
@@ -261,16 +264,12 @@ def cmd_app(store, args):
 
 def _give_up(store, args) -> None:
     """The agent concluded a robot cannot fill this application: the candidate does the rest by hand."""
-    if args.id is None and not args.url:
-        raise ValidationError("pass the application id, or --url when no application was started for this link")
-    timing.note(why=args.why, reason=args.reason, url=None if args.id else args.url)
-    if args.id is None:
-        gave_up = next(g for g in timing.Book(store.conn).overview([])["gave_up"] if g.get("url") == args.url)
-        return _out({"url": args.url, **gave_up})
-    app = store.update_application(args.id, status="manual")
+    timing.note(why=args.why, reason=args.reason)
+    app = store.update_application(args.id, status="manual", giveup_why=args.why, giveup_reason=args.reason)
     written = report.write(store, _data_dir(args), args.id)["markdown"]
     info = timing.Book(store.conn).application(args.id) or {}
-    _out({"id": args.id, "company": app["company"], "status": app["status"], **info.get("gave_up", {}), "record": written})
+    _out({"id": args.id, "company": app["company"], "status": app["status"], "why": args.why, "reason": args.reason,
+          **info.get("gave_up", {}), "record": written})
 
 
 def _resume_arg(store, path: str | None) -> str | None:
@@ -638,13 +637,12 @@ def build_parser() -> argparse.ArgumentParser:
     x = ap.add_parser("report", help="write the result record: every question, its answer, who answered it")
     x.add_argument("id", type=int); x.add_argument("--print", action="store_true", help="print the Markdown")
     ap.add_parser("stats", help="plain Python vs AI vs you, across all applications")
-    x = ap.add_parser("timing", help="where the time went: jobfill, the agent, waiting on you; every step of one "
+    x = ap.add_parser("timing", help="development, with JOBFILL_TIMING=1: where the time went; every step of one "
                                      "application, or every run and application")
     x.add_argument("id", type=int, nargs="?"); x.add_argument("--json", action="store_true")
-    x = ap.add_parser("giveup", help="a robot cannot fill this application: record when and why (status: manual)")
-    x.add_argument("id", type=int, nargs="?")
-    x.add_argument("--url", help="the link, when no application was started for it")
-    x.add_argument("--why", required=True, choices=timing.GIVEUP_WHY)
+    x = ap.add_parser("giveup", help="a robot cannot fill this application: record why (status: manual)")
+    x.add_argument("id", type=int)
+    x.add_argument("--why", required=True, choices=GIVE_UP_WHY)
     x.add_argument("--reason", required=True, help="one line: what stopped it")
     s.set_defaults(fn=cmd_app)
 

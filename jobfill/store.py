@@ -549,10 +549,12 @@ class Store:
 
     def applications(self) -> list[dict]:
         return [dict(r) for r in self.conn.execute(
-            "SELECT id, company, role, status, ats, url, created_at FROM applications ORDER BY id DESC")]
+            "SELECT id, company, role, status, ats, url, created_at, giveup_why, giveup_reason FROM applications "
+            "ORDER BY id DESC")]
 
     def update_application(self, app_id: int, **fields) -> dict:
-        allowed = {"role", "url", "ats", "country", "source", "referrer", "posting", "notes", "status", "resume"}
+        allowed = {"role", "url", "ats", "country", "source", "referrer", "posting", "notes", "status", "resume",
+                   "giveup_why", "giveup_reason"}
         fields = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if fields:
             with self.conn:

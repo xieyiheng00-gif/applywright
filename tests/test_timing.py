@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import unittest
@@ -180,6 +181,9 @@ class TestAccounting(unittest.TestCase):
 
 class TestClock(unittest.TestCase):
     def setUp(self):
+        env = mock.patch.dict(os.environ, {"JOBFILL_TIMING": "1"})
+        env.start()
+        self.addCleanup(env.stop)
         self.store = fresh_store(owner=self)
         self.conn = self.store.conn
 
@@ -266,7 +270,7 @@ class TestCommands(unittest.TestCase):
     def setUp(self):
         self.folder = temp_dir(self)
         self.db = self.folder / "jobfill.db"
-        env = mock.patch.dict(os.environ, {"JOBFILL_SESSION": "test"})
+        env = mock.patch.dict(os.environ, {"JOBFILL_SESSION": "test", "JOBFILL_TIMING": "1"})
         env.start()
         self.addCleanup(env.stop)
 
@@ -341,19 +345,6 @@ class TestCommands(unittest.TestCase):
         gave_up = self.run_cli("app", "stats")["time"]["gave_up"]
         self.assertEqual([(g["id"], g["company"], g["why"]) for g in gave_up], [(app, "Acme", "captcha")])
 
-    def test_giving_up_on_a_link_with_no_application(self):
-        link = "https://www.linkedin.com/jobs/view/4012345678"
-        self.assertEqual(self.run_cli("apply", "start", link, "--no-network")["handler"], "follow")
-        out = self.run_cli("app", "giveup", "--url", link, "--why", "easy_apply", "--reason", "Easy Apply only")
-        self.assertEqual((out["url"], out["why"]), (link, "easy_apply"))
-        self.assertIn("active", out)
-        overview = self.run_cli("app", "timing")
-        self.assertIn(link, overview)
-        self.assertIn("easy_apply", overview)
-
-    def test_giving_up_needs_something_to_give_up_on(self):
-        self.run_cli("app", "giveup", "--why", "other", "--reason", "x", code=2)
-
     def test_the_report_has_the_time_and_an_old_application_has_none(self):
         app = self.app()
         conn = db.connect(self.db)
@@ -382,9 +373,6 @@ class TestCommands(unittest.TestCase):
         self.assertIn("## Runs", everything)
         self.assertIn("why_company", everything)
 
-    def test_no_timing_yet_is_said_plainly(self):
-        self.assertIn("No timing yet", self.run_cli("app", "timing"))
-
 
 class TestTurnMarks(unittest.TestCase):
     def setUp(self):
@@ -403,7 +391,7 @@ class TestTurnMarks(unittest.TestCase):
 
     def command_in_session(self, session):
         conn = db.connect(self.db)
-        with mock.patch.dict(os.environ, {"JOBFILL_SESSION": session}):
+        with mock.patch.dict(os.environ, {"JOBFILL_SESSION": session, "JOBFILL_TIMING": "1"}):
             timing.start(conn, "apply fill", 1)
             timing.finish()
         conn.close()
@@ -441,11 +429,17 @@ class TestTurnMarks(unittest.TestCase):
                               capture_output=True, text=True, cwd=REPO)
         self.assertEqual(done.stdout.strip(), "False")
 
-    def test_the_project_settings_run_the_hooks(self):
-        settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
-        commands = {event: settings["hooks"][event][0]["hooks"][0]["command"] for event in ("Stop", "UserPromptSubmit")}
-        self.assertIn('jobfill/timing.py" pause --hook', commands["Stop"])
-        self.assertIn('jobfill/timing.py" resume --hook', commands["UserPromptSubmit"])
+    def test_the_hooks_are_not_shipped_to_everyone_who_clones_the_repo(self):
+        tracked = REPO / ".claude" / "settings.json"
+        self.assertNotIn("timing.py", tracked.read_text(encoding="utf-8") if tracked.exists() else "")
+
+    def test_the_readme_gives_the_settings_a_checkout_needs(self):
+        readme = (REPO / "README.md").read_text(encoding="utf-8")
+        blocks = [b.split("```")[0] for b in readme.split("```json\n")[1:]]
+        settings = json.loads(next(b for b in blocks if "JOBFILL_TIMING" in b))
+        self.assertEqual(settings["env"], {"JOBFILL_TIMING": "1"})
+        self.assertIn('timing.py" pause --hook', settings["hooks"]["Stop"][0]["hooks"][0]["command"])
+        self.assertIn('timing.py" resume --hook', settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"])
 
     def test_it_runs_as_a_plain_script_from_anywhere_as_the_hooks_do(self):
         # The script's own folder comes first on the import path: no module of jobfill may hide a standard one.
@@ -460,6 +454,65 @@ class TestTurnMarks(unittest.TestCase):
         self.assertEqual(timing.database(), db.default_db_path())
         with mock.patch.dict(os.environ, {"JOBFILL_DB": "elsewhere.db"}):
             self.assertEqual(timing.database(), db.default_db_path())
+
+
+class TestTimingOff(unittest.TestCase):
+    """What every user gets: no log, no time in their reports, and `app giveup` works all the same."""
+
+    def setUp(self):
+        self.db = temp_dir(self) / "jobfill.db"
+        env = mock.patch.dict(os.environ)
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop("JOBFILL_TIMING", None)
+
+    def run_cli(self, *argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(cli.main(["--db", str(self.db), *argv]), 0)
+        text = out.getvalue()
+        return json.loads(text) if text.startswith(("{", "[")) else text
+
+    def test_it_is_off_unless_asked_for(self):
+        self.assertFalse(timing.enabled())
+        with mock.patch.dict(os.environ, {"JOBFILL_TIMING": "0"}):
+            self.assertFalse(timing.enabled())
+        with mock.patch.dict(os.environ, {"JOBFILL_TIMING": "1"}):
+            self.assertTrue(timing.enabled())
+
+    def test_commands_log_nothing_and_reports_have_no_time(self):
+        app = self.run_cli("app", "start", "--company", "Acme", "--role", "Engineer")["id"]
+        written = self.run_cli("app", "report", str(app))
+        conn = db.connect(self.db)
+        rows = timing.load(conn)
+        conn.close()
+        self.assertEqual(rows, [])
+        self.assertNotIn("## Time", Path(written["markdown"]).read_text(encoding="utf-8"))
+        self.assertNotIn("time", json.loads(Path(written["json"]).read_text(encoding="utf-8")))
+        self.assertNotIn("time", self.run_cli("app", "stats"))
+        self.assertIn("JOBFILL_TIMING", self.run_cli("app", "timing"))
+        self.assertIn("JOBFILL_TIMING", self.run_cli("app", "timing", str(app))["note"])
+
+    def test_giving_up_works_without_timing(self):
+        app = self.run_cli("app", "start", "--company", "Acme", "--role", "Engineer")["id"]
+        out = self.run_cli("app", "giveup", str(app), "--why", "captcha", "--reason", "Cloudflare on every page")
+        self.assertEqual((out["status"], out["why"], out["reason"]), ("manual", "captcha", "Cloudflare on every page"))
+        self.assertNotIn("active", out)
+        record = Path(out["record"]).read_text(encoding="utf-8")
+        self.assertIn("yours to finish by hand** (captcha): Cloudflare on every page", record)
+        shown = self.run_cli("app", "show", str(app))
+        self.assertEqual((shown["status"], shown["giveup_why"], shown["notes"]), ("manual", "captcha", None))
+        self.assertEqual([(g["id"], g["giveup_why"]) for g in self.run_cli("app", "stats")["given_up"]], [(app, "captcha")])
+
+    def test_a_database_from_before_giveup_gets_the_columns(self):
+        conn = sqlite3.connect(self.db)
+        conn.execute("CREATE TABLE applications (id INTEGER PRIMARY KEY, company TEXT NOT NULL, role TEXT, url TEXT, "
+                     "ats TEXT, country TEXT, source TEXT, referrer TEXT, posting TEXT, notes TEXT, "
+                     "status TEXT NOT NULL DEFAULT 'in_progress', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
+        conn.execute("INSERT INTO applications (company, created_at, updated_at) VALUES ('Old Corp', 'x', 'x')")
+        conn.commit()
+        conn.close()
+        self.assertEqual(self.run_cli("app", "giveup", "1", "--why", "other", "--reason", "x")["company"], "Old Corp")
 
 
 @unittest.skipUnless(HAS_PLAYWRIGHT, "playwright not installed")
@@ -483,7 +536,8 @@ class TestFillPhases(unittest.TestCase):
         self.addCleanup(page.close)
         page.goto((FIXTURES / "lever_like.html").as_uri())
         lever = adapters.get("lever")
-        timing.start(store.conn, "apply fill", app)
+        with mock.patch.dict(os.environ, {"JOBFILL_TIMING": "1"}):
+            timing.start(store.conn, "apply fill", app)
         fill_frame(lever.frame(page), store, app, lever, overwrite=True, files=False)
         timing.finish()
         detail = timing.load(store.conn)[0]["detail"]

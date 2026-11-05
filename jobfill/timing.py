@@ -1,7 +1,7 @@
-"""How long applications take, and who the time went to.
+"""How long applications take, and who the time went to: a development tool, off unless JOBFILL_TIMING is set.
 
-Every jobfill command adds a row to the ``timing`` table when it starts and closes it when it ends, so the
-agent does nothing extra to be measured, and a command that is killed still leaves its row. From that log:
+With it set, every jobfill command adds a row to the ``timing`` table when it starts and closes it when it ends,
+so the agent does nothing extra to be measured, and a command that is killed still leaves its row. From that log:
 
 - **jobfill**: the time inside a command (plain Python and the browser). Exact. `apply fill` also keeps
   where its time went (``phases``) and its slowest fields.
@@ -13,15 +13,14 @@ agent does nothing extra to be measured, and a command that is killed still leav
   `match`, classifying new questions. A silence before a command with no application goes to the batch
   (``shared``).
 - **The candidate**: `apply watch` and `login` run while the candidate acts, and the time around `login` is
-  theirs too. Turn hooks (.claude/settings.json) mark that the agent ended its turn (``pause``) and that the
-  candidate replied (``resume``); the wait lasts from one to the other, or to the next command. A runtime without
-  such hooks runs `python -m jobfill.timing pause` right before a message that waits for an answer.
+  theirs too. Turn hooks (README, "Measuring time") mark that the agent ended its turn (``pause``) and that the
+  candidate replied (``resume``); the wait lasts from one to the other, or to the next command.
 - **Nobody**: a silence over ``IDLE_AFTER`` is charged to no one and ends the run (a batch, as a whole).
 
-`app giveup` records when the agent concluded an application cannot be filled by a robot, and why.
+`app giveup` (for everyone, see cli.py) also leaves a row, so this says how much work came before it.
 
-This module imports only the standard library: `pause` and `resume` can run on every turn, and importing the rest
-of jobfill (the question catalog) would add a third of a second to each one.
+This module imports only the standard library: `pause` and `resume` run on every turn, and importing the rest of
+jobfill (the question catalog) would add a third of a second to each one.
 """
 
 from __future__ import annotations
@@ -50,7 +49,8 @@ CANDIDATE = {"apply watch", "login"}                 # these run while the candi
 WRITING = {"answer check", "answer record"}
 CLASSIFYING = {"learn", "pending", "match", "question list", "question show", "question alias", "fact define"}
 STARTS = {"apply start", "app start"}                # the application exists only once these have run
-GIVEUP_WHY = ("unsupported", "login", "captcha", "widget", "easy_apply", "closed", "other")
+
+OFF = 'It is a development tool, off unless JOBFILL_TIMING=1 is set (README, "Measuring time").'
 
 ACTIVE = ("python", "writing", "classifying", "agent")
 LABEL = {"python": "jobfill (plain Python and the browser)", "writing": "Agent writing answers",
@@ -114,9 +114,13 @@ def command_name(args) -> str | None:
     return name if args.command in LOGGED and name not in UNLOGGED else None
 
 
+def enabled() -> bool:
+    return os.environ.get("JOBFILL_TIMING", "") not in ("", "0")
+
+
 def start(conn, name: str | None, app_id: int | None = None) -> None:
     global _clock
-    _clock = _Clock(conn, name, app_id) if name else None
+    _clock = _Clock(conn, name, app_id) if name and enabled() else None
 
 
 def note(**detail) -> None:
@@ -409,17 +413,12 @@ class Book:
             writing += [{**who, **x} for x in info.get("answers", [])]
             if info.get("gave_up"):
                 gave_up.append({**who, "system": a.get("ats"), **info["gave_up"]})
-        for r in self.rows:   # gave up before any application existed (only a job-board link, say)
-            if r["name"] == GIVEUP and not r["application_id"] and r["detail"].get("url"):
-                url = r["detail"]["url"]
-                gave_up.append({"id": None, "company": None, "role": None, "system": None, "url": url,
-                                **self._gave_up(r, [s for s in self.segments if s["url"] == url])})
         phases, slow = _fills(self.rows)
         return {"applications_timed": len(timed), "median_active": _median([t["active"] for t in timed]),
                 "runs": self.runs(), "applications": timed,
                 "by_system": {k: {"applications": len(v), "median_active": _median(v)}
                               for k, v in sorted(systems.items())},
-                "gave_up": sorted(gave_up, key=lambda g: g["at"]),
+                "gave_up": gave_up,
                 "stopped_at_start": _stopped(self.rows),
                 "writing": _writing(writing),
                 "where_jobfill_spends_it": phases,
@@ -510,7 +509,7 @@ def markdown_application(app: dict, info: dict) -> str:
 
 def markdown_overview(ov: dict) -> str:
     if not ov["runs"] and not ov["applications"]:
-        return "No timing yet: it starts with the next application.\n"
+        return f"No timing recorded. {OFF}\n"
     lines = ["# Time spent on applications", "",
              f"Applications timed: {ov['applications_timed']}. Typical work per application: "
              f"{clock(ov['median_active'])} (jobfill + agent, without waiting on you).", "", "## Runs (a batch, as a whole)", "",
@@ -532,7 +531,7 @@ def markdown_overview(ov: dict) -> str:
     if ov["gave_up"]:
         lines += ["", "## Given up: not fillable by a robot", "", "| # | Company | System | Why | Work before giving up | "
                   "Clock | Reason |", "|---|---|---|---|---|---|---|"]
-        lines += [f"| {g['id'] or '-'} | {g['company'] or g.get('url')} | {g['system'] or '-'} | {g['why']} | "
+        lines += [f"| {g['id']} | {g['company']} | {g['system'] or '-'} | {g['why']} | "
                   f"{clock(g['active'])} | {clock(g['elapsed'])} | {g['reason'] or ''} |" for g in ov["gave_up"]]
     if ov["stopped_at_start"]:
         lines += ["", "## Stopped at `apply start`", "", "| Link | jobfill said | Time |", "|---|---|---|"]

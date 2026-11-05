@@ -117,6 +117,8 @@ CREATE TABLE IF NOT EXISTS applications (
     notes       TEXT,
     resume      TEXT,               -- this application's CV (tailored); NULL = documents.resume_path
     status      TEXT NOT NULL DEFAULT 'in_progress',
+    giveup_why     TEXT,            -- status manual: a robot could not fill it (`app giveup`)
+    giveup_reason  TEXT,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
@@ -142,7 +144,7 @@ CREATE TABLE IF NOT EXISTS answers (
     UNIQUE (application_id, field_key)
 );
 
--- One row per jobfill command and turn boundary: `app timing` works out from it who spent what (timing.py).
+-- With JOBFILL_TIMING set, one row per jobfill command and turn boundary: `app timing` works out who spent what.
 CREATE TABLE IF NOT EXISTS timing (
     id              INTEGER PRIMARY KEY,
     session         TEXT NOT NULL DEFAULT '',  -- the agent session it ran in
@@ -227,8 +229,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
                             ("idx", "INTEGER"), ("attempts", "INTEGER NOT NULL DEFAULT 0"), ("attempt_value", "TEXT")):
             if column not in have:
                 conn.execute(f"ALTER TABLE answers ADD COLUMN {column} {ddl}")
-        if "resume" not in {r["name"] for r in conn.execute("PRAGMA table_info(applications)")}:
-            conn.execute("ALTER TABLE applications ADD COLUMN resume TEXT")
+        have = {r["name"] for r in conn.execute("PRAGMA table_info(applications)")}
+        for column in ("resume", "giveup_why", "giveup_reason"):
+            if column not in have:
+                conn.execute(f"ALTER TABLE applications ADD COLUMN {column} TEXT")
 
 
 def _canonicalize_choice_facts(conn: sqlite3.Connection, ts: str) -> None:
