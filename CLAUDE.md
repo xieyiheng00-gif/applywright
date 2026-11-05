@@ -9,7 +9,7 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
 | Command | File | When |
 |---|---|---|
 | `/setup` | `.claude/commands/setup.md` | First run: import documents, collect facts (chat questionnaire or the setup portal), write base material |
-| `/apply` | `.claude/commands/apply.md` | `/apply <job URL>`: detect the system, auto-fill (Greenhouse/Lever/iCIMS/Ashby in Python, other portals in the built-in browser) |
+| `/apply` | `.claude/commands/apply.md` | `/apply <job URL>`: detect the system, auto-fill (Greenhouse/Lever/iCIMS/Ashby/Workday/Workable in Python, other portals in the built-in browser) |
 | `/fill`  | `.claude/commands/fill.md`  | Answer a form given as field JSON: resolve, ask gaps, write tier-3 answers |
 | `/learn` | `.claude/commands/learn.md` | Classify questions the bank did not recognize |
 | `/update`| `.claude/commands/update.md`| New project/job/skill, changed visa, stale tier-2 facts |
@@ -58,6 +58,14 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   `pages.py` which page the candidate is on). The candidate shares the window: jobfill never overwrites
   a value it did not type (state `typed`), follows them when they click Next, and pauses when they go
   Back. Multi-page behavior is tested on `tests/fixtures/wizard_like.html`.
+- Workable: `detect.py` `_workable` (posting links, short links, company pages; the public API for the posting
+  and company name, 404 = removed) and the `Workable` adapter (cookie banner declined, Education / Experience
+  through `Adapter.entries` one editor at a time with `data-jobfill-index`, react-datepicker typed key by key,
+  intl-tel-input phone by its country code, read-only selects, role=radio / role=checkbox boxes, "Address" as
+  `location_full` via `Adapter.adjust`). Its optional EEO survey after Submit (US jobs) is `Adapter.survey`:
+  `runner.submit_page` reports it, `apply fill` answers it (a radio still on the page's own preselection is
+  `preset`, not an answer), and only another `apply submit --confirm` sends it. Tested on
+  `tests/fixtures/workable_like.html` (`#eeo`, `#ofccp`) in `tests/test_workable.py`.
 - Accounts: `jobfill/accounts.py` (secret.env, HMAC-SHA256 per-company passwords, login email),
   `jobfill/apply/login.py` (sign in / create / verify flow), `jobfill/mail.py` (optional IMAP reader).
   The `accounts` table holds no passwords. Login is tested only on `tests/fixtures/auth_like.html`.

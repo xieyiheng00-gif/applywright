@@ -186,7 +186,12 @@ def find_page(context, tag: str, url: str):
     or Greenhouse job shares one host, and filling that tab would put this application's answers into
     another company's form."""
     from urllib.parse import urlparse
-    host = urlparse(url).netloc
+
+    def site(address: str) -> str | None:   # a local file is its own site; about:blank is none
+        u = urlparse(address)
+        return u.netloc or (f"file:{u.path}" if u.scheme == "file" else None)
+
+    host = site(url)
     same_site = None
     for page in context.pages:
         try:
@@ -197,7 +202,7 @@ def find_page(context, tag: str, url: str):
             return page, False
         if str(name or "").startswith(TAG_PREFIX):
             continue
-        if urlparse(page.url).netloc == host:
+        if host and site(page.url) == host:
             same_site = page
     if same_site is not None:
         same_site.evaluate("(t) => { window.name = t; }", tag)

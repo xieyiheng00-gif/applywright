@@ -1,11 +1,11 @@
 """Decide which application system a job URL uses, without AI.
 
-Order: URL rules (no network), then the page HTML (embedded Greenhouse/Lever/iCIMS/Ashby forms,
+Order: URL rules (no network), then the page HTML (embedded Greenhouse/Lever/iCIMS/Ashby/Workable forms,
 schema.org JobPosting markup). Only when both are inconclusive does the agent look at the
 page itself (``handler == "agent_check"``).
 
 handler   meaning
-python    Greenhouse / Lever / iCIMS / Ashby / Workday: jobfill's Playwright filler does the work
+python    Greenhouse / Lever / iCIMS / Ashby / Workday / Workable: jobfill's Playwright filler does the work
 ai        company portal or other ATS: the agent fills it in the built-in browser
 follow    job board listing (LinkedIn, Indeed...): find the employer's apply link first
 unsupported  known but not handled yet
@@ -27,14 +27,14 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like
       "Chrome/126.0 Safari/537.36")
 UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
-PYTHON_ATS = {"greenhouse", "lever", "icims", "ashby", "workday"}
+PYTHON_ATS = {"greenhouse", "lever", "icims", "ashby", "workday", "workable"}
 
 # Other ATS products: recognised, filled by the agent in the browser.
 OTHER_ATS = {
     "smartrecruiters": r"(^|\.)smartrecruiters\.com$",
     "jobvite": r"(^|\.)jobvite\.com$", "taleo": r"(^|\.)taleo\.net$",
     "successfactors": r"(successfactors\.(com|eu)|sapsf\.(com|eu))$", "bamboohr": r"(^|\.)bamboohr\.com$",
-    "workable": r"(^|\.)workable\.com$", "recruitee": r"(^|\.)recruitee\.com$",
+    "recruitee": r"(^|\.)recruitee\.com$",
     "rippling": r"(^|\.)rippling\.com$", "jazzhr": r"(^|\.)applytojob\.com$",
     "breezy": r"(^|\.)breezy\.hr$", "eightfold": r"(^|\.)eightfold\.ai$", "oracle": r"oraclecloud\.com$",
     "phenom": r"(^|\.)phenompeople\.com$",
@@ -203,6 +203,96 @@ def _ashby(d: Detection, u, network: bool) -> Detection:
     return d
 
 
+# Workable: apply.workable.com/<account>/j/<shortcode>/ (the form at .../apply/), the short link
+# apply.workable.com/j/<shortcode>, or <account>.workable.com/j/<shortcode>. The public API gives the posting
+# (/api/v2/accounts/<account>/jobs/<shortcode>, 404 once it is removed) and the company's name
+# (/api/v1/accounts/<account>).
+WORKABLE_JOB = re.compile(r"^/(?:(?P<account>[\w.-]+)/)?j/(?P<code>[0-9A-Za-z]{6,16})(?:/apply)?/?$")
+WORKABLE_LINK = re.compile(r"https?://(?:apply\.workable\.com/(?:(?P<account>[\w.-]+)/)?|(?P<sub>[\w-]+)\.workable\.com/)"
+                           r"j/(?P<code>[0-9A-Za-z]{6,16})\b")
+WORKABLE_EMBED = re.compile(r"whr_embed\s*\(|workable\.com/assets/embed\.js|apply\.workable\.com/api/v1/widget/accounts/")
+WORKABLE_SITE = {"www", "help", "resources", "blog", "engineering", "app", "id", "api", "status", "developers",
+                 "support", "marketplace"}   # Workable's own sites, not a company's job list
+WORKABLE_BOARD = ("a Workable job list, not a single job. Open the job and pass its link "
+                  "(apply.workable.com/<company>/j/<code>/).")
+
+
+def _workable_account(html: str, code: str | None = None) -> tuple[str | None, str | None]:
+    """(account, shortcode) a Workable page names itself by: its canonical link, else its subdomain meta."""
+    m = re.search(r'rel="canonical"\s+href="https://apply\.workable\.com/([\w.-]+)/j/([0-9A-Za-z]{6,16})', html)
+    if m and (code is None or m.group(2).upper() == code):
+        return m.group(1), m.group(2).upper()
+    sub = re.search(r'<meta\s+name="subdomain"\s+content="([\w.-]+)"', html)
+    return (sub.group(1) if sub else None), code
+
+
+def _workable_location(job: dict) -> str | None:
+    loc = job.get("location") or {}
+    place = ", ".join(p for p in (loc.get("city"), loc.get("region"), loc.get("country")) if p)
+    work = {"remote": "Remote", "hybrid": "Hybrid", "on_site": "On-site"}.get(job.get("workplace") or "")
+    work = work or ("Remote" if job.get("remote") else "")
+    return f"{place} ({work})" if place and work else (place or work or None)
+
+
+def _workable(d: Detection, u, network: bool) -> Detection:
+    host = u.netloc.lower().split(":")[0]
+    if host == "jobs.workable.com":
+        if u.path.startswith("/view/"):
+            d.kind, d.ats, d.handler = "job", "workable", "follow"
+            d.reason = ("Jobs by Workable is Workable's job board. Open the listing, click Apply (it leads to "
+                        "apply.workable.com/<company>/j/<code>/), and run `apply start` on that link.")
+            return d
+        return _not_job(d, "Jobs by Workable page, but not a single job listing.")
+    sub = host.split(".")[0] if host != "apply.workable.com" else None
+    if re.match(r"^/[\w.-]+/candidates/[^/]+/(eeoc_profile/new|surveys/)", u.path):
+        d.ats = "workable"
+        return _not_job(d, "This is the link from Workable's reminder email to an optional survey (EEO) for an "
+                           "application already sent, not a job. The candidate answers or ignores it there; "
+                           "jobfill fills the survey only when Workable shows it right after `apply submit`.")
+    m = WORKABLE_JOB.match(u.path)
+    account = (m.group("account") if m else None) or sub
+    if not m or (sub and m.group("account")):
+        if "not_found=true" in u.query:
+            return _not_job(d, "Workable says this job does not exist any more (removed or closed).")
+        if sub and network:   # an older link form: the page names the job it shows
+            try:
+                acc, code = _workable_account(fetch(u.geturl()))
+            except Exception:
+                acc, code = None, None
+            if acc and code:
+                return _workable(d, urlparse(f"https://apply.workable.com/{acc}/j/{code}/"), network)
+        return _not_job(d, f"This is {WORKABLE_BOARD}")
+    code = m.group("code").upper()
+    if not account and network:   # the short link apply.workable.com/j/<code>: its page names the company
+        try:
+            account, _ = _workable_account(fetch(f"https://apply.workable.com/j/{code}"), code)
+        except Exception as e:
+            d.extra["page_error"] = str(e)[:200]
+    d.kind, d.ats, d.handler = "job", "workable", "python"
+    d.apply_url = (f"https://apply.workable.com/{account}/j/{code}/apply/" if account
+                   else f"https://apply.workable.com/j/{code}/apply/")
+    d.company = _titleize(account) if account else None
+    d.extra = {"account": account, "shortcode": code, **d.extra}
+    if network and account:
+        try:
+            job = fetch_json(f"https://apply.workable.com/api/v2/accounts/{account}/jobs/{code}")
+            d.role = job.get("title")
+            d.location = _workable_location(job)
+            d.posting = "\n\n".join(_strip_html(job[k]) for k in ("description", "requirements", "benefits")
+                                    if job.get(k)) or None
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return _not_job(d, "Workable says this job does not exist any more (removed or closed).")
+            d.extra["api_error"] = str(e)[:200]
+        except Exception as e:   # the form itself may still load
+            d.extra["api_error"] = str(e)[:200]
+        try:
+            d.company = fetch_json(f"https://apply.workable.com/api/v1/accounts/{account}").get("name") or d.company
+        except Exception:
+            pass
+    return d
+
+
 def _icims(d: Detection, u) -> Detection:
     m = re.match(r"^(/jobs/(\d+)(?:/[^/?#]+)?)", u.path)
     if not m or m.group(1).rstrip("/").endswith(("/search", "/intro")):
@@ -263,6 +353,12 @@ def _from_html(d: Detection, html: str, network: bool) -> Detection:
         m = re.search(host_re, html, re.I)
         if m:
             return handler(d, urlparse(m.group(0)), network)
+    # A Workable job linked (or its form framed) from the company's own page. Several jobs make it a list.
+    workable_jobs = {m.group("code").upper(): m.group(0) for m in WORKABLE_LINK.finditer(html)
+                     if (m.group("sub") or "").lower() not in WORKABLE_SITE}
+    if len(workable_jobs) == 1:
+        return _workable(d, urlparse(next(iter(workable_jobs.values()))), network)
+    workable_list = bool(workable_jobs) or bool(WORKABLE_EMBED.search(html))
     m = re.search(r"https?://[\w.-]+\.icims\.com/jobs/\d+[^\"'<> ]*", html)
     if m:
         return _icims(d, urlparse(htmllib.unescape(m.group(0))))
@@ -284,6 +380,8 @@ def _from_html(d: Detection, html: str, network: bool) -> Detection:
     words = len(text.split())
     if words < 80:
         # Probably a JavaScript app shell; the HTML alone cannot tell.
+        if workable_list:   # the company's Workable job list, drawn by Workable's widget
+            return _not_job(d, f"The page shows {WORKABLE_BOARD}")
         if d.ats and JOB_PATH.search(d.url):
             d.kind, d.handler = "job", "ai"
             return d
@@ -300,6 +398,8 @@ def _from_html(d: Detection, html: str, network: bool) -> Detection:
         d.role = _strip_html(title.group(1))[:120] if title else None
         d.posting = text[:20000]
         return d
+    if workable_list:
+        return _not_job(d, f"The page shows {WORKABLE_BOARD}")
     return _not_job(d, "No job posting found on this page (no job description, no application form).")
 
 
@@ -347,6 +447,8 @@ def detect(url: str, *, network: bool = True, html: str | None = None) -> Detect
         return _ashby(d, u, network)
     if host.endswith(".icims.com"):
         return _icims(d, u)
+    if host.endswith(".workable.com") and host.split(".")[0] not in WORKABLE_SITE:
+        return _workable(d, u, network)
     if re.search(r"(myworkdayjobs|myworkdaysite)\.com$|(^|\.)workday\.com$", host):
         if "/job/" in u.path or re.search(r"/details/", u.path):
             return _workday(d, u)

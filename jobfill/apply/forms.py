@@ -17,9 +17,10 @@ OPTIONS_JS = r"""(id) => {
   const shown = (n) => n && n.getClientRects().length > 0 && getComputedStyle(n).visibility !== "hidden";
   const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
   let boxes = [];
-  for (const attr of ["aria-controls", "aria-owns"]) {
+  for (const attr of ["aria-controls", "aria-owns"]) {   // often the same list (Workable): read it once
     const ref = el && el.getAttribute(attr);
-    if (ref && document.getElementById(ref)) boxes.push(document.getElementById(ref));
+    const box = ref && document.getElementById(ref);
+    if (box && !boxes.includes(box)) boxes.push(box);
   }
   if (!boxes.length) boxes = Array.from(document.querySelectorAll("[role=listbox]")).filter(shown);
   let found = [];
@@ -124,6 +125,19 @@ def extract(frame, root_selector: str | None = None, read_options: bool = True,
     return fields
 
 
+def close_combobox(frame, loc) -> None:
+    """Close a dropdown's list: Escape, else (Workable's select ignores Escape) a click on the input again.
+    Left open, the list covers the next field."""
+    try:
+        loc.press("Escape")
+        if loc.get_attribute("aria-expanded") == "true":
+            frame.wait_for_timeout(150)
+            if loc.get_attribute("aria-expanded") == "true":
+                loc.click(timeout=2000)
+    except Exception:
+        pass
+
+
 def combobox_options(frame, field_id: str) -> list[str]:
     loc = frame.locator(sel(field_id))
     try:
@@ -134,7 +148,7 @@ def combobox_options(frame, field_id: str) -> list[str]:
             loc.press("ArrowDown")
             frame.wait_for_timeout(350)
             opts = frame.evaluate(OPTIONS_JS, field_id)
-        loc.press("Escape")
+        close_combobox(frame, loc)
     except Exception:
         return []
     out = []
@@ -261,7 +275,7 @@ def _fill_combobox(frame, loc, field_id: str, value) -> tuple[bool, str]:
                 break
         i = _best_option([t if not NOT_AN_OPTION.match(t) else "" for t in texts], v)
         if i is None:
-            loc.press("Escape")
+            close_combobox(frame, loc)
             return False, f"no dropdown option matches {v!r}" + (f" (saw {texts[:5]})" if texts else "")
         try:
             frame.locator(f'[data-jobfill-opt="{i}"]').click(timeout=3000)
@@ -299,7 +313,7 @@ def search_combobox(frame, field_id: str, value: str, alternatives=()) -> tuple[
                 frame.locator(f'[data-jobfill-opt="{i}"]').click(timeout=3000)
                 frame.wait_for_timeout(150)
                 return texts[i], seen
-        loc.press("Escape")
+        close_combobox(frame, loc)
         loc.fill("")
     except Exception:
         pass
@@ -351,8 +365,19 @@ def _fill_dropdown(frame, f: dict, value) -> tuple[bool, str]:
             pass
 
 
+ROLE_BOX = "xpath=ancestor::*[@role='radio' or @role='checkbox' or @role='switch'][1]"
+
+
 def _click_choice(frame, ref: str) -> bool:
     loc = frame.locator(f'[data-jobfill-id="{ref}"]')
+    box = loc.locator(ROLE_BOX)
+    if box.count():
+        # Drawn as its own box around a hidden input (Workable): click the box, never the label beside it, which
+        # may hold a link ("I accept the Privacy Notice").
+        if box.get_attribute("aria-checked") != "true":
+            box.click(timeout=3000)
+            frame.wait_for_timeout(150)
+        return box.get_attribute("aria-checked") == "true" or loc.is_checked()
     try:
         loc.check(timeout=3000, force=True)
     except Exception:
@@ -414,8 +439,15 @@ def fill(frame, f: dict, value, *, root: Path, after=None, custom=None) -> tuple
                     return False, f"could not select {w!r}"
         elif kind == "checkbox":
             on = value is True or str(value).strip().lower() in ("yes", "true", "1")
-            if on != loc.is_checked():
-                if not _click_choice(frame, f["id"]) and on:
+            box = loc.locator(ROLE_BOX)
+            now = box.get_attribute("aria-checked") == "true" if box.count() else loc.is_checked()
+            if on != now:
+                if box.count():
+                    box.click(timeout=3000)   # toggles: on or off
+                    frame.wait_for_timeout(150)
+                    if (box.get_attribute("aria-checked") == "true") != on:
+                        return False, "could not " + ("tick" if on else "untick") + " the box"
+                elif not _click_choice(frame, f["id"]) and on:
                     return False, "could not tick the box"
         elif kind == "combobox":
             ok, note = _fill_combobox(frame, loc, f["id"], value)
