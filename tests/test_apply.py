@@ -107,6 +107,32 @@ class TestFiller(unittest.TestCase):
         report = fill_frame(adapter.frame(page), store, app, adapter, overwrite=True)
         return page, report, summarize(report, app)
 
+    def test_a_page_is_filled_once_unless_a_field_failed(self):
+        from jobfill.apply.runner import summarize
+        def report(**field):
+            return {"fields": {"q": {"label": "Q", **field}}}
+        waiting = report(status="needs_ai", ai_task={"question_id": "why_us"})
+        out = summarize(waiting, 7)
+        self.assertIs(out["rerun"], False)
+        self.assertIn("apply set --app 7 --field q --file", out["needs_ai"][0]["set_with"])
+        self.assertIs(summarize(report(status="needs_user"), 7)["rerun"], False)
+        self.assertIs(summarize(report(status="filled", fill="ok"), 7)["rerun"], False)
+        self.assertIs(summarize(report(status="filled", fill="failed: no option"), 7)["rerun"], True)
+
+    def test_set_keeps_an_approved_written_answer_as_written(self):
+        from jobfill.apply import runner
+        page, report, _ = self.run_fixture("greenhouse_like.html", "greenhouse", "Acme Robotics")
+        store = fresh_store(with_profile=True, owner=self)
+        app = store.start_application("Acme Robotics", "Engineer")
+        adapter = adapters.get("greenhouse")
+        fid, label = next((k, v["label"]) for k, v in report["fields"].items() if "Why Acme" in v["label"])
+        store.record_answer(app, store.answer_key(label), label, "Because of the robots.", question_id="why_company",
+                            source="ai", tier=3, status="filled")
+        out = runner.set_field(store, app, {"pages": [], "typed": {}}, page, adapter, fid, "Because of the robots.")
+        self.assertTrue(out["ok"], out)
+        row = next(a for a in store.answers(app) if a["label"] == label)
+        self.assertEqual((row["source"], row["tier"], row["fill"]), ("ai", 3, "ok"))
+
     def dom(self, page, js):
         return page.evaluate(js)
 

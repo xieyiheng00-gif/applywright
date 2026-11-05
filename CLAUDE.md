@@ -57,7 +57,8 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   reading/filling, `adapters.py` per-ATS quirks, `runner.py` commands, `browser.py` shared window,
   `pages.py` which page the candidate is on). The candidate shares the window: jobfill never overwrites
   a value it did not type (state `typed`), follows them when they click Next, and pauses when they go
-  Back. Multi-page behavior is tested on `tests/fixtures/wizard_like.html`.
+  Back. Multi-page behavior is tested on `tests/fixtures/wizard_like.html`. One `apply fill` per page: `rerun` in
+  its result is true only to retry a failed field, and approved answers go in with `apply set` (`--file`).
 - Workable: `detect.py` `_workable` (posting links, short links, company pages; the public API for the posting
   and company name, 404 = removed) and the `Workable` adapter (cookie banner declined, Education / Experience
   through `Adapter.entries` one editor at a time with `data-jobfill-index`, react-datepicker typed key by key,
