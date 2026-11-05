@@ -1,7 +1,6 @@
 """Workable: detection (its URLs, its public API, company pages) and the filler on tests/fixtures/workable_like.html."""
 
 import importlib.util
-import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
@@ -13,7 +12,7 @@ from jobfill.apply.detect import detect
 from jobfill.apply.forms import extract
 from jobfill.apply.runner import fill_frame, summarize
 
-from .helpers import fresh_store
+from .helpers import fresh_store, temp_dir
 
 PAGE = (Path(__file__).resolve().parent / "fixtures" / "workable_like.html").as_uri()
 HAS_PLAYWRIGHT = importlib.util.find_spec("playwright") is not None
@@ -185,7 +184,7 @@ class TestWorkableFiller(unittest.TestCase):
         from playwright.sync_api import sync_playwright
         cls.pw = sync_playwright().start()
         cls.browser = cls.pw.chromium.launch()
-        cls.pdf = Path(tempfile.mkdtemp()) / "resume.pdf"
+        cls.pdf = temp_dir(cls) / "resume.pdf"
         cls.pdf.write_bytes(b"%PDF-1.4 test")
 
     @classmethod
@@ -329,7 +328,7 @@ class TestWorkableSurvey(unittest.TestCase):
         from playwright.sync_api import sync_playwright
         cls.pw = sync_playwright().start()
         cls.browser = cls.pw.chromium.launch()
-        cls.data = Path(tempfile.mkdtemp())
+        cls.data = temp_dir(cls)
         cls.pdf = cls.data / "resume.pdf"
         cls.pdf.write_bytes(b"%PDF-1.4 test")
 
