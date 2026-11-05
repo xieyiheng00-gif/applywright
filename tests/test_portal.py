@@ -3,7 +3,6 @@
 import http.client
 import importlib.util
 import json
-import tempfile
 import threading
 import unittest
 import urllib.request
@@ -15,7 +14,7 @@ from jobfill.portal import form, layout
 from jobfill.portal.server import PortalServer
 from jobfill.store import RECORD_SETUP, Store
 
-from .helpers import fresh_store
+from .helpers import fresh_store, temp_dir
 
 HAS_PLAYWRIGHT = importlib.util.find_spec("playwright") is not None
 
@@ -76,7 +75,7 @@ class TestLayout(unittest.TestCase):
 class TestSave(unittest.TestCase):
     def setUp(self):
         self.store = fresh_store(with_profile=True, owner=self)
-        self.root = Path(tempfile.mkdtemp())
+        self.root = temp_dir(self)
 
     def page(self):
         st = form.state(self.store, self.root)
@@ -217,7 +216,7 @@ class TestSave(unittest.TestCase):
 
 class TestUpload(unittest.TestCase):
     def setUp(self):
-        self.root = Path(tempfile.mkdtemp())
+        self.root = temp_dir(self)
 
     def test_files_land_in_documents_and_are_never_overwritten(self):
         path = form.save_upload(self.root, "documents.resume_path", "My CV.pdf", b"%PDF one")
@@ -239,9 +238,10 @@ class TestUpload(unittest.TestCase):
 class PortalThread:
     """A portal on a free port, serving a database file from its own thread (SQLite needs that)."""
 
-    def __init__(self, with_profile=False, *, restart_of=None):
-        """``restart_of``: another PortalThread whose database and port this one takes over."""
-        self.dir = restart_of.dir if restart_of else Path(tempfile.mkdtemp())
+    def __init__(self, owner, with_profile=False, *, restart_of=None):
+        """``owner``: the test, which deletes the folder afterwards.
+        ``restart_of``: another PortalThread whose database and port this one takes over."""
+        self.dir = restart_of.dir if restart_of else temp_dir(owner)
         self.db_path = self.dir / "jobfill.db"
         self.port = restart_of.server.port if restart_of else 0
         if restart_of is None:
@@ -277,7 +277,7 @@ class PortalThread:
 
 class TestServer(unittest.TestCase):
     def setUp(self):
-        self.portal = PortalThread()
+        self.portal = PortalThread(self)
         self.addCleanup(self.portal.stop)
         self.base = f"http://127.0.0.1:{self.portal.server.port}"
         self.token = self.portal.server.token
@@ -307,7 +307,7 @@ class TestServer(unittest.TestCase):
         store, other = fresh_store(owner=self), fresh_store(owner=self)
         keys = []
         for st in (store, store, other):
-            server = PortalServer(st, Path(tempfile.mkdtemp()), 0)
+            server = PortalServer(st, temp_dir(self), 0)
             keys.append(server.token)
             server.server_close()
         self.assertEqual(keys[0], keys[1])      # a restarted portal accepts the tab left open
@@ -337,7 +337,7 @@ class TestServer(unittest.TestCase):
 
     def test_submit_stops_the_server(self):
         self.portal.stop()
-        portal = PortalThread(with_profile=True)
+        portal = PortalThread(self, with_profile=True)
         self.addCleanup(portal.stop)
         req = urllib.request.Request(f"http://127.0.0.1:{portal.server.port}/api/save", method="POST",
                                      data=json.dumps({"facts": {}, "submit": True}).encode(),
@@ -366,7 +366,7 @@ class TestPortalPage(unittest.TestCase):
         cls.pw.stop()
 
     def open(self, with_profile=False):
-        portal = PortalThread(with_profile)
+        portal = PortalThread(self, with_profile)
         self.addCleanup(portal.stop)
         page = self.browser.new_page()
         self.addCleanup(page.close)
@@ -427,7 +427,7 @@ class TestPortalPage(unittest.TestCase):
         page.wait_for_selector("#problem")
         self.assertIn("Not saved: jobfill is not running", page.inner_text("#problem"))
         self.assertEqual(page.input_value("#f-identity-preferred_name"), "Jojo")    # nothing typed is lost
-        again = PortalThread(restart_of=portal)
+        again = PortalThread(self, restart_of=portal)
         self.addCleanup(again.stop)
         page.click("text=Save for Later")
         page.wait_for_selector(".save-state:text('Saved at')")
