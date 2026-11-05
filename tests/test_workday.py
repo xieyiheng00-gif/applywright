@@ -1,7 +1,6 @@
 """Workday's prompt widget ("How Did You Hear About Us?"): pick a menu choice, read the pill."""
 
 import importlib.util
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,7 +8,7 @@ from jobfill.apply import adapters
 from jobfill.derive import choose_source
 from jobfill.apply.runner import fill_frame, summarize
 
-from .helpers import fresh_store
+from .helpers import fresh_store, temp_dir
 
 PAGE = (Path(__file__).resolve().parent / "fixtures" / "workday_like.html").as_uri()
 
@@ -265,7 +264,7 @@ class TestWorkdayExperience(unittest.TestCase):
 
     def setUp(self):
         self.store = fresh_store(with_profile=True, owner=self)   # 1 job, 2 schools, skills incl. SQL
-        resume = Path(tempfile.mkdtemp()) / "jordan_rivera_resume.pdf"
+        resume = temp_dir(self) / "jordan_rivera_resume.pdf"
         resume.write_bytes(b"%PDF-1.4 test")
         self.store.set_fact("documents.resume_path", str(resume))
         self.app = self.store.start_application("Acme", "Engineer", ats="workday")
@@ -355,7 +354,7 @@ class TestNoExactChoiceLoop(unittest.TestCase):
         from jobfill.apply import runner
         self.runner = runner
         self.store = fresh_store(with_profile=True, owner=self)   # schools: UW-Madison, UNAM; fields: CS, CE
-        self.data = Path(tempfile.mkdtemp())
+        self.data = temp_dir(self)
         self.workday = adapters.get("workday")
 
     def open(self, company):

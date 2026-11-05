@@ -44,7 +44,15 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
 
 - Python 3.10+. The core is standard library only; `/apply`'s filler needs Playwright
   (`pip install playwright` then `python -m playwright install chromium`).
-  Tests: `python -m unittest discover -s tests -t .` (browser tests skip without Playwright).
+  Tests (browser tests skip without Playwright): while working, run the class or module you changed
+  (`python -m tests.run test_workday`, `python -m tests.run TestSourceChoice`); before a commit,
+  `python -m tests.run --fast`; before a PR, `python -m tests.run` at normal speed. `tests/run.py` starts one
+  process per test class, up to 12 at a time. `--fast` shortens Playwright's fixed waits and typing delays to a
+  quarter in the test processes only (`JOBFILL_TEST_WAIT_SCALE`, read in `tests/__init__.py`; never under
+  `jobfill/`, those waits protect real sites). A class that fails only with `--fast` goes in `NOT_SCALED` in
+  `tests/run.py`; the test itself stays as it is. `python -m unittest discover -s tests -t .` still runs
+  everything one at a time. A test that needs a folder asks `tests/helpers.py` for `temp_dir(self)` (`cls` in
+  `setUpClass`), which deletes it afterwards, not `tempfile.mkdtemp()`.
 - Filler code: `jobfill/apply/` (`detect.py` system detection, `extract.js` + `forms.py` generic field
   reading/filling, `adapters.py` per-ATS quirks, `runner.py` commands, `browser.py` shared window,
   `pages.py` which page the candidate is on). The candidate shares the window: jobfill never overwrites

@@ -1,12 +1,11 @@
 import importlib.util
-import tempfile
 import unittest
 from pathlib import Path
 
 from jobfill.apply import adapters
 from jobfill.apply.detect import detect
 
-from .helpers import fresh_store
+from .helpers import fresh_store, temp_dir
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 HAS_PLAYWRIGHT = importlib.util.find_spec("playwright") is not None
@@ -88,7 +87,7 @@ class TestFiller(unittest.TestCase):
         from playwright.sync_api import sync_playwright
         cls.pw = sync_playwright().start()
         cls.browser = cls.pw.chromium.launch()
-        cls.pdf = Path(tempfile.mkdtemp()) / "resume.pdf"
+        cls.pdf = temp_dir(cls) / "resume.pdf"
         cls.pdf.write_bytes(b"%PDF-1.4 test")
 
     @classmethod
@@ -346,7 +345,7 @@ class TestResultRecord(unittest.TestCase):
         self.assertEqual(s["questions"], len(rep["fields"]))
         self.assertGreater(s["python_share"], 80)
 
-        out = Path(tempfile.mkdtemp())
+        out = temp_dir(self)
         paths = report.write(store, out, app)
         md = Path(paths["markdown"]).read_text(encoding="utf-8")
         self.assertTrue(Path(paths["markdown"]).name.startswith(f"app{app}_globex_data-engineer"))

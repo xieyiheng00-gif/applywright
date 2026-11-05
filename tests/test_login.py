@@ -3,7 +3,6 @@
 import importlib.util
 import subprocess
 import sys
-import tempfile
 import unittest
 from email.message import EmailMessage
 from pathlib import Path
@@ -12,7 +11,7 @@ from urllib.parse import quote
 from jobfill import accounts
 from jobfill.mail import extract
 
-from .helpers import fresh_store
+from .helpers import fresh_store, temp_dir
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 ROOT = Path(__file__).resolve().parent.parent
@@ -32,7 +31,7 @@ class TestPasswords(unittest.TestCase):
             self.assertTrue(any(c in chars for c in pw), pw)
 
     def test_secret_file_is_created_once(self):
-        folder = Path(tempfile.mkdtemp())
+        folder = temp_dir(self)
         first = accounts.secret(folder)
         self.assertEqual(len(first), 64)
         self.assertEqual(accounts.secret(folder), first)                                # never overwritten
@@ -87,7 +86,7 @@ class TestMailExtract(unittest.TestCase):
 
 class TestTerminalOnly(unittest.TestCase):
     def run_cli(self, *args):
-        db = Path(tempfile.mkdtemp()) / "t.db"
+        db = temp_dir(self) / "t.db"
         return subprocess.run([sys.executable, "-m", "jobfill", "--db", str(db), *args], cwd=ROOT,
                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
 
@@ -128,7 +127,7 @@ class TestLoginFlow(unittest.TestCase):
     def setUp(self):
         self.store = fresh_store(with_profile=True, owner=self)
         self.store.set_fact("consent.account_terms", True)
-        self.data = Path(tempfile.mkdtemp())
+        self.data = temp_dir(self)
         self.password = accounts.derive_password(accounts.secret(self.data), "Acme")
 
     def run_login(self, hash_="", mail=None):

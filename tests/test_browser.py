@@ -3,7 +3,6 @@
 import importlib.util
 import os
 import sys
-import tempfile
 import time
 import unittest
 import warnings
@@ -11,6 +10,8 @@ from pathlib import Path
 from unittest import mock
 
 from jobfill.apply import browser
+
+from .helpers import temp_dir
 
 NETSH = """
 Protocol tcp Port Exclusion Ranges
@@ -42,7 +43,7 @@ class TestReservedPorts(unittest.TestCase):
                 mock.patch.object(browser, "reserved_by_windows", return_value=True), \
                 mock.patch.object(browser, "chrome_path", side_effect=AssertionError("must not launch")):
             with self.assertRaises(RuntimeError) as err:
-                browser.ensure(Path(tempfile.mkdtemp()))
+                browser.ensure(temp_dir(self))
         self.assertIn("port 9333 is reserved by Windows", str(err.exception))
         self.assertIn("unset JOBFILL_CDP_PORT", str(err.exception))
 
@@ -52,7 +53,7 @@ class TestLaunchFailures(unittest.TestCase):
         # Any executable that rejects Chromium's flags exits at once, like a launch handed to another window.
         with no_fixed_port(), mock.patch.dict(os.environ, {"JOBFILL_CHROME": sys.executable}):
             with self.assertRaises(RuntimeError) as err:
-                browser.ensure(Path(tempfile.mkdtemp()), headless=True, timeout=10)
+                browser.ensure(temp_dir(self), headless=True, timeout=10)
         self.assertIn("exited right away", str(err.exception))
         self.assertIn("python -m jobfill apply close", str(err.exception))
 
@@ -63,12 +64,12 @@ class TestLaunchFailures(unittest.TestCase):
                 mock.patch.object(browser.subprocess, "Popen", return_value=proc), \
                 mock.patch.object(browser, "_kill") as kill:
             with self.assertRaises(RuntimeError) as err:
-                browser.ensure(Path(tempfile.mkdtemp()), timeout=0.6)
+                browser.ensure(temp_dir(self), timeout=0.6)
         kill.assert_called_once_with(4242)
         self.assertIn("closed it", str(err.exception))
 
     def test_stale_port_file_is_removed_before_launch(self):
-        data = Path(tempfile.mkdtemp())
+        data = temp_dir(self)
         (data / "browser-profile").mkdir()
         (data / "browser-profile" / "DevToolsActivePort").write_text("9333\n/devtools/browser/old")
         proc = mock.Mock(pid=1)
@@ -83,7 +84,7 @@ class TestLaunchFailures(unittest.TestCase):
 @unittest.skipUnless(importlib.util.find_spec("playwright"), "Playwright not installed")
 class TestRealLaunch(unittest.TestCase):
     def test_own_port_reconnect_and_close(self):
-        data = Path(tempfile.mkdtemp())
+        data = temp_dir(self)
         with no_fixed_port(), warnings.catch_warnings():
             warnings.simplefilter("ignore", ResourceWarning)   # the window outliving ensure() is the point
             first = browser.ensure(data, headless=True)
