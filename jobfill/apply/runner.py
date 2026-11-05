@@ -169,6 +169,13 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
                          "status": "filled", "value": f["value"], "fill": "kept (the candidate's answer)",
                          "by": "candidate"}
                 theirs.append((f, r))
+            elif r.get("no_exact") and owner == "jobfill" and not dry_run:
+                # Picked on an earlier run (found by searching the list): the answer, not an open question.
+                entry = {"label": f["label"], "question_id": r.get("question_id"), "kind": f["kind"],
+                         "status": "filled", "value": f["value"], "fill": "kept (already has a value)"}
+                store.record_answer(app_id, _key(store, f), f["label"], f["value"], question_id=r.get("question_id"),
+                                    source=r.get("source") or "", tier=r.get("tier"), status="filled",
+                                    fill=entry["fill"], section=f.get("section"), idx=f.get("index"))
             elif r.get("no_exact") and f["kind"] == "combobox" and not dry_run and is_empty(f) \
                     and (found := _search_list(store, app_id, frame, f, r, entry, asked)):
                 attempts.append((r["id"], f, found))
