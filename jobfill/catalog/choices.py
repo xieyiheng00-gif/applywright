@@ -18,6 +18,8 @@ DECLINE = [
     "choose not", "i choose not to disclose", "rather not", "not to disclose",
     "not declared", "not specified", "wish not to", "i do not wish to self identify",
     "i dont wish to self identify", "not to answer",
+    # Longer than "protected veteran" in "I choose not to self-identify my protected veteran status" (Workable, OFCCP)
+    "choose not to self identify", "i choose not to self identify", "not to self identify",
 ]
 
 CHOICE_SETS: dict[str, dict] = {

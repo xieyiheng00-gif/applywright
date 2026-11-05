@@ -127,6 +127,10 @@ class Adapter:
     def confirmed(self, page) -> bool:
         return bool(CONFIRMATION.search(self.frame(page).locator("body").inner_text(timeout=5000)[:20000]))
 
+    def survey(self, page) -> str | None:
+        """A survey the site shows right after the application went in (Workable's EEO survey), else None."""
+        return None
+
 
 class Greenhouse(Adapter):
     name = "greenhouse"
@@ -304,11 +308,32 @@ def _pick_listed(frame, field: dict, value) -> tuple[bool, str]:
         (False, f"clicked {texts[i]!r}, but it shows {got!r}")
 
 
+# ---- Workable's EEO survey (US jobs, when the company turns it on): shown on the same page right after the
+# application went in (help center: "EEO survey: how will candidates complete it?"; candidates who skip it get
+# an email link to /<company>/candidates/<id>/eeoc_profile/new). Read from Workable's public careers bundle
+# (careers.6901cd820c44d775.js, release ui.v2026.42.0): form[data-ui=eeoc-form] with radio groups named race,
+# gender and, for federal contractors, veteran and disability, every one preset to "undisclosed"; Submit is
+# button[data-ui=submit-eeoc], skip is [data-ui=skip-eeoc] / [data-ui=skip-eeoc-footer] (never clicked by
+# jobfill); then "Your EEO form has been submitted successfully." The question headings sit beside the groups,
+# not tied to them, so the groups are named here by their fixed names.
+
+WORKABLE_FORM = "form[data-ui=application-form]"
+WORKABLE_SURVEY = "form[data-ui=eeoc-form]"
+WORKABLE_SURVEY_QUESTIONS = {"race": "Race or ethnicity", "gender": "Gender", "veteran": "Veteran status",
+                             "disability": "Disability status"}
+SURVEY_DONE = re.compile(r"your eeo form has been submitted|you already completed the eeo form", re.I)
+# The race options carry the government's explanation in their label ("White (Not Hispanic or Latino) A person
+# having origins in ..."): the explanation is not part of the choice, and words in it ("Indian Subcontinent")
+# would mislead the option matching.
+EXPLANATION = re.compile(r"\s+(?:A person|All persons)\b.*$", re.S)
+
+
 class Workable(Adapter):
     name = "workable"
-    ready_selector = "form[data-ui=application-form]"
-    root_selector = "form[data-ui=application-form]"
-    submit_selector = "form[data-ui=application-form] button[data-ui=apply-button]"
+    ready_selector = f"{WORKABLE_FORM}, {WORKABLE_SURVEY}"
+    # The survey when it shows (it follows the application on the same page), else the application form.
+    root_selector = f"{WORKABLE_SURVEY}, body:not(:has({WORKABLE_SURVEY})) {WORKABLE_FORM}"
+    submit_selector = f"{WORKABLE_FORM} button[data-ui=apply-button], {WORKABLE_SURVEY} button[data-ui=submit-eeoc]"
     SECTIONS = ("education", "experience")
 
     def open(self, page, url: str) -> None:
@@ -353,8 +378,23 @@ class Workable(Adapter):
                 continue   # an entry editor the candidate opened: theirs, left alone (see entries())
             if f.get("name") == "address" and f["kind"] == "input" and not f.get("section"):
                 f["label"] = WORKABLE_LOCATION
+            if f["kind"] == "radio" and f.get("name") in WORKABLE_SURVEY_QUESTIONS:   # the EEO survey
+                f["label"] = WORKABLE_SURVEY_QUESTIONS[f["name"]]
+                f["option_refs"] = [[EXPLANATION.sub("", text), ref] for text, ref in f["option_refs"]]
+                f["options"] = [text for text, _ in f["option_refs"]]
+                if f.get("value"):
+                    f["value"] = EXPLANATION.sub("", f["value"])
             out.append(f)
         return out
+
+    def survey(self, page) -> str | None:
+        return "eeo" if self.frame(page).locator(f"{WORKABLE_SURVEY}:visible").count() else None
+
+    def confirmed(self, page) -> bool:
+        if self.survey(page):   # shown only once the application went in
+            return True
+        text = self.frame(page).locator("body").inner_text(timeout=5000)[:20000]
+        return bool(CONFIRMATION.search(text) or SURVEY_DONE.search(text))
 
     def custom_fill(self, frame, field: dict, value, store=None):
         loc = frame.locator(sel(field["id"]))
@@ -372,7 +412,7 @@ class Workable(Adapter):
         the candidate); none is ever edited or deleted. An editor left open is the candidate's: left alone."""
         notes = notes if notes is not None else []
         for kind in self.SECTIONS:
-            box = frame.locator(f"{self.root_selector} [data-ui={kind}]")
+            box = frame.locator(f"{WORKABLE_FORM} [data-ui={kind}]")
             if not box.count():
                 continue
             name = kind.capitalize()
@@ -401,7 +441,7 @@ class Workable(Adapter):
                     notes.append(f"{name}: clicking Add did not open an editor")
                     break
                 editor.evaluate("(e, k) => e.setAttribute('data-jobfill-index', String(k))", k)
-                yield f'{self.root_selector} [data-ui={kind}] [data-jobfill-index="{k}"]'
+                yield f'{WORKABLE_FORM} [data-ui={kind}] [data-jobfill-index="{k}"]'
                 frame.evaluate("() => document.activeElement && document.activeElement.blur()")   # close calendars
                 editor.locator("[data-ui=save-section]").click(timeout=5000)
                 for _ in range(25):

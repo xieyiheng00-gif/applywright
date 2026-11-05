@@ -54,7 +54,10 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   and company name, 404 = removed) and the `Workable` adapter (cookie banner declined, Education / Experience
   through `Adapter.entries` one editor at a time with `data-jobfill-index`, react-datepicker typed key by key,
   intl-tel-input phone by its country code, read-only selects, role=radio / role=checkbox boxes, "Address" as
-  `location_full` via `Adapter.adjust`). Tested on `tests/fixtures/workable_like.html` (`tests/test_workable.py`).
+  `location_full` via `Adapter.adjust`). Its optional EEO survey after Submit (US jobs) is `Adapter.survey`:
+  `runner.submit_page` reports it, `apply fill` answers it (a radio still on the page's own preselection is
+  `preset`, not an answer), and only another `apply submit --confirm` sends it. Tested on
+  `tests/fixtures/workable_like.html` (`#eeo`, `#ofccp`) in `tests/test_workable.py`.
 - Accounts: `jobfill/accounts.py` (secret.env, HMAC-SHA256 per-company passwords, login email),
   `jobfill/apply/login.py` (sign in / create / verify flow), `jobfill/mail.py` (optional IMAP reader).
   The `accounts` table holds no passwords. Login is tested only on `tests/fixtures/auth_like.html`.

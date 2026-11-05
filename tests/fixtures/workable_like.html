@@ -38,7 +38,21 @@
      Escape does not close; the privacy consent as a role=checkbox box whose label holds a link; a hidden
      Cloudflare Turnstile slot (#captcha shows it); a cookie banner whose backdrop covers the page until answered.
      #nosave makes saving an Experience entry fail; #maxdate=YYYY-MM makes the date pickers drop later dates
-     (live, Workable takes no date after the current month). -->
+     (live, Workable takes no date after the current month).
+     After "Submit application": Workable's success message, or with #eeo its optional EEO survey (#ofccp adds the
+     veteran and disability sections). The survey could not be seen live without applying; it mirrors Workable's
+     public careers bundle (careers.6901cd820c44d775.js, release ui.v2026.42.0): form[data-ui=eeoc-form]; radio
+     groups race / gender / veteran / disability with their values, each preset to "undisclosed"; Control.Radio
+     (label[role=presentation] > div[role=radio] around an aria-hidden input, then the radio_label element); the
+     headings in a column beside the groups; button[data-ui=submit-eeoc] "Submit survey"; skip buttons; the English
+     texts and the success message. Assumed: the survey takes the application form's place on the page, the
+     race explanation sits inside the option's label, and the CSS class names (Workable hashes them). -->
+<style>
+  form[data-ui=eeoc-form] fieldset[role=radiogroup] { display: block; }
+  form[data-ui=eeoc-form] label[role=presentation] { display: flex; gap: 8px; margin: 4px 0; }
+  form[data-ui=eeoc-form] [role=radio] { width: 14px; height: 14px; padding: 0; position: relative; }
+  form[data-ui=eeoc-form] h6 { margin: 0; font-size: 14px; }
+</style>
 <main role="main">
 <nav><a data-ui="overview-tab" href="#">Overview</a> <a data-ui="application-form-tab" aria-current="page" href="#">Application</a></nav>
 <form class="styles--2I-rr" data-ui="application-form" novalidate>
@@ -184,7 +198,79 @@ for (const [ui, choice] of [["cookie-consent-accept", "accept"], ["cookie-consen
     window.cookieChoice = choice; $("[data-ui=backdrop]").remove(); $("[data-ui=cookie-consent]").remove();
   });
 }
-$("form").addEventListener("submit", (e) => { e.preventDefault(); window.submitted = true; });
+$("form").addEventListener("submit", (e) => {
+  e.preventDefault(); window.submitted = true;
+  // Workable then shows its success message, or (US job, survey turned on) the optional EEO survey.
+  $("form[data-ui=application-form]").replaceWith(flags.includes("eeo") ? eeoSurvey() : el(`<div data-ui="success">
+    <h2>Thank you!</h2><p>Your application has been submitted successfully.</p>
+    <p>A copy of your application will be sent to your email for your records.</p></div>`));
+  window.scrollTo(0, 0);
+});
+
+// EEO survey, as the careers bundle renders it (texts from its English strings; long legal paragraphs shortened).
+const SURVEY = [
+  {name: "race", header: "Race or ethnicity", options: [
+    ["hispanic_or_latino", "Hispanic or Latino", "A person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin regardless of race."],
+    ["white", "White (Not Hispanic or Latino)", "A person having origins in any of the original peoples of Europe, the Middle East, or North Africa."],
+    ["black", "Black or African American (Not Hispanic or Latino)", "A person having origins in any of the black racial groups of Africa."],
+    ["native_hawaiian", "Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)", "A person having origins in any of the peoples of Hawaii, Guam, Samoa, or other Pacific Islands."],
+    ["asian", "Asian (Not Hispanic or Latino)", "A person having origins in any of the original peoples of the Far East, Southeast Asia, or the Indian Subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam."],
+    ["american_indian", "American Indian or Alaska Native (Not Hispanic or Latino)", "A person having origins in any of the original peoples of North and South America (including Central America), and who maintain tribal affiliation or community attachment."],
+    ["multiracial", "Two or More Races (Not Hispanic or Latino)", "All persons who identify with more than one of the above five races."],
+    ["undisclosed", "I don't wish to answer", ""]]},
+  {name: "gender", header: "Gender", plain: true, options: [["male", "Male"], ["female", "Female"], ["undisclosed", "I don't wish to answer"]]},
+  {name: "veteran", header: "Veteran status", ofccp: true,
+   before: `<p>This employer is a Government contractor subject to the Vietnam Era Veterans' Readjustment Assistance Act of 1974, as amended by the Jobs for Veterans Act of 2002, 38 U.S.C. 4212 (VEVRAA) …</p>
+     <div><p>A “disabled veteran” is one of the following:</p><ul><li>A veteran of the U.S. military, ground, naval or air service who is entitled to compensation …</li></ul></div>
+     <p>If you believe you belong to any of the categories of protected veterans listed above, please indicate by checking the appropriate box below. …</p>`,
+   question: "Please check one of the boxes below:",
+   options: [["veteran", "I IDENTIFY AS ONE OR MORE OF THE CLASSIFICATIONS OF PROTECTED VETERAN LISTED ABOVE"],
+             ["not_veteran", "I AM NOT A PROTECTED VETERAN"], ["undisclosed", "I CHOOSE NOT TO SELF-IDENTIFY MY PROTECTED VETERAN STATUS"]],
+   after: `<p>Submission of this information is voluntary and refusal to provide it will not subject you to any adverse treatment. …</p>`},
+  {name: "disability", header: "Voluntary Self-Identification of Disability", ofccp: true,
+   before: `<p>Voluntary Self-Identification of Disability Form CC-305<br>OMB Control Number 1250-0005<br>Expires 04/30/2026</p>
+     <h5>Why are you being asked to complete this form?</h5><p>We are a federal contractor or subcontractor. …</p>
+     <h5>How do I know I have a disability?</h5><p>A disability is a condition that substantially limits one or more of your “major life activities”. …</p>`,
+   question: "Please check one of the boxes below:",
+   options: [["disabled", "Yes, I have a disability, or have had one in the past"],
+             ["not_disabled", "No, I do not have a disability and have not had one in the past"], ["undisclosed", "I do not want to answer"]]},
+];
+let radioId = 0;
+function controlRadio(name, [value, text, explanation], plain) {
+  const id = "eeo" + ++radioId, on = value === "undisclosed";   // RadioGroup defaultValue "undisclosed"
+  const shown = plain ? text : `<h6>${text}</h6>`;
+  const labelEl = explanation ? `<div id="radio_label_${id}"><span class="styles--QTMDv">${shown}</span><span class="styles--2Fm4U">${explanation}</span></div>`
+                              : `<span class="styles--QTMDv" id="radio_label_${id}">${shown}</span>`;
+  return `<label class="styles--1i1Gr" role="presentation" data-checked="${on}">
+    <div class="styles--fxWsq" id="wrapper_${id}" role="radio" aria-checked="${on}" tabindex="0" aria-labelledby="radio_label_${id}">
+      <input type="radio" name="${name}" value="${value}" id="${id}" tabindex="-1" aria-hidden="true" ${on ? "checked" : ""}></div>${labelEl}</label>`;
+}
+function eeoSurvey() {
+  const groups = SURVEY.filter((g) => !g.ofccp || flags.includes("ofccp")).map((g) => `
+    <div class="styles--1yeUv"><h4>${g.header}</h4></div>
+    <div class="styles--3qpxS">${g.before || ""}<div class="styles--2ksfL">${g.question ? `<p>${g.question}</p>` : ""}
+      <fieldset role="radiogroup" class="styles--3JNbA">${g.options.map((o) => controlRadio(g.name, o, g.plain)).join("")}</fieldset></div>${g.after || ""}</div>`).join("");
+  const form = el(`<form class="styles--2aN0u" data-ui="eeoc-form"><div class="styles--1wJpP">
+    <div class="styles--3qpxS"><h4>Help us be an equal opportunity employer</h4>
+      <p>You are requested (but not required) to fill in the personal data below. This information will only be used for government reporting purposes and not as selection criteria for the hiring process.</p>
+      <p>If you can't complete the EEO survey now, but would like to do it later, don't worry; we'll be sending you an email with a link to the survey shortly.</p>
+      <button data-ui="skip-eeoc" type="button">Skip EEO survey for now</button></div>
+    ${groups}
+    <div class="styles--2r8Eq"><button data-ui="submit-eeoc" type="submit">Submit survey</button>
+      <button data-ui="skip-eeoc-footer" type="button">Skip EEO survey for now</button></div></div></form>`);
+  $$("[role=radio]", form).forEach((box) => box.addEventListener("click", () => {
+    const group = box.closest("[role=radiogroup]");
+    $$("[role=radio]", group).forEach((r) => { r.setAttribute("aria-checked", "false"); r.querySelector("input").checked = false; r.parentElement.dataset.checked = "false"; });
+    box.setAttribute("aria-checked", "true"); box.querySelector("input").checked = true; box.parentElement.dataset.checked = "true";
+  }));
+  const done = (submitted) => form.replaceWith(el(`<div data-ui="success"><h2>Thank you!</h2>
+    <p>${submitted ? "Your EEO form has been submitted successfully." : "Your application has been submitted successfully."}</p>
+    <p>${submitted ? "The information you provided will be solely used to monitor equal opportunity compliance and not as a selection criteria for the hiring process."
+                   : "If you didn’t get the chance to complete EEO survey, but would like to do it later, you have a second chance. We’ll be sending you an email with the link shortly."}</p></div>`));
+  form.addEventListener("submit", (e) => { e.preventDefault(); window.surveyAnswers = Object.fromEntries(new FormData(form)); done(true); });
+  $$("[data-ui^=skip-eeoc]", form).forEach((b) => b.addEventListener("click", () => { window.surveySkipped = true; done(false); }));
+  return form;
+}
 
 // role=radio / role=checkbox boxes around hidden inputs.
 function wireRadio(box) {

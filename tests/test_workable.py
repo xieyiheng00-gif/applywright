@@ -122,6 +122,61 @@ class TestWorkableDetect(unittest.TestCase):
             d = detect("https://apply.workable.com/j/A1B2C3D4E5")
         self.assertEqual((d.apply_url, d.company, d.role), (APPLY, "Acme Robotics", "Robotics Engineer"))
 
+    def test_survey_link_from_the_reminder_email_is_not_a_job(self):
+        d = self.d("https://apply.workable.com/acme/candidates/3f9a2c/eeoc_profile/new/")
+        self.assertEqual((d.kind, d.ats), ("not_job", "workable"))
+        self.assertIn("reminder email", d.reason)
+
+
+# Workable's EEO survey questions and answers, verbatim from its careers bundle (fixed US-government wording).
+SURVEY_OPTIONS = {
+    "Race or ethnicity": ["Hispanic or Latino", "White (Not Hispanic or Latino)",
+                          "Black or African American (Not Hispanic or Latino)",
+                          "Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)",
+                          "Asian (Not Hispanic or Latino)", "American Indian or Alaska Native (Not Hispanic or Latino)",
+                          "Two or More Races (Not Hispanic or Latino)", "I don't wish to answer"],
+    "Gender": ["Male", "Female", "I don't wish to answer"],
+    "Veteran status": ["I IDENTIFY AS ONE OR MORE OF THE CLASSIFICATIONS OF PROTECTED VETERAN LISTED ABOVE",
+                       "I AM NOT A PROTECTED VETERAN", "I CHOOSE NOT TO SELF-IDENTIFY MY PROTECTED VETERAN STATUS"],
+    "Disability status": ["Yes, I have a disability, or have had one in the past",
+                          "No, I do not have a disability and have not had one in the past", "I do not want to answer"],
+}
+
+
+class TestWorkableSurveyAnswers(unittest.TestCase):
+    """The stored EEO facts answer Workable's survey wording; "decline" is a valid answer to every question."""
+
+    def answers(self, **facts):
+        from jobfill.resolver import Resolver
+        store = fresh_store(with_profile=True, owner=self)
+        for key, value in facts.items():
+            store.set_fact(f"eeo.{key}", value)
+        app = store.start_application("Acme Robotics", "Engineer")
+        fields = [{"id": label, "label": label, "type": "radio", "options": options}
+                  for label, options in SURVEY_OPTIONS.items()]
+        return {f["id"]: (f["status"], f.get("value")) for f in Resolver(store, app, log=False).resolve(fields)["fields"]}
+
+    def test_stored_answers(self):
+        got = self.answers(gender="female", race=["white"], hispanic_latino="no", veteran_status="not_veteran",
+                           disability_status="no")
+        self.assertEqual(got, {"Race or ethnicity": ("filled", "White (Not Hispanic or Latino)"),
+                               "Gender": ("filled", "Female"),
+                               "Veteran status": ("filled", "I AM NOT A PROTECTED VETERAN"),
+                               "Disability status": ("filled", "No, I do not have a disability and have not had one in "
+                                                               "the past")})
+
+    def test_decline_everywhere(self):
+        got = self.answers(gender="decline", race=["decline"], hispanic_latino="decline", veteran_status="decline",
+                           disability_status="decline")
+        self.assertEqual({k: v[1] for k, v in got.items()},
+                         {"Race or ethnicity": "I don't wish to answer", "Gender": "I don't wish to answer",
+                          "Veteran status": "I CHOOSE NOT TO SELF-IDENTIFY MY PROTECTED VETERAN STATUS",
+                          "Disability status": "I do not want to answer"})
+
+    def test_an_answer_the_survey_does_not_offer_is_asked(self):
+        got = self.answers(gender="non_binary")   # the EEOC form offers Male, Female, or no answer
+        self.assertEqual(got["Gender"], ("needs_user", None))
+
 
 @unittest.skipUnless(HAS_PLAYWRIGHT, "Playwright not installed")
 class TestWorkableFiller(unittest.TestCase):
@@ -263,6 +318,101 @@ class TestWorkableFiller(unittest.TestCase):
         button = self.workable.submit_button(self.workable.frame(page))
         self.assertEqual(button.inner_text().strip(), "Submit application")
         self.assertFalse(page.evaluate("() => window.submitted"))
+
+
+@unittest.skipUnless(HAS_PLAYWRIGHT, "Playwright not installed")
+class TestWorkableSurvey(unittest.TestCase):
+    """The optional EEO survey Workable shows right after the application went in (US jobs)."""
+
+    @classmethod
+    def setUpClass(cls):
+        from playwright.sync_api import sync_playwright
+        cls.pw = sync_playwright().start()
+        cls.browser = cls.pw.chromium.launch()
+        cls.data = Path(tempfile.mkdtemp())
+        cls.pdf = cls.data / "resume.pdf"
+        cls.pdf.write_bytes(b"%PDF-1.4 test")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.browser.close()
+        cls.pw.stop()
+
+    def setUp(self):
+        self.store = fresh_store(with_profile=True, owner=self)   # gender non-binary, race and disability declined
+        self.store.set_fact("documents.resume_path", str(self.pdf))
+        self.app = self.store.start_application("Acme Robotics", "Engineer", ats="workable")
+        self.state = {"tag": "jobfill-app-test", "apply_url": PAGE}
+        self.workable = adapters.get("workable")
+
+    def submitted_application(self, flags="#eeo&ofccp"):
+        """The page after the application went in: filled, then submitted with the candidate's go-ahead."""
+        from jobfill.apply.runner import fill_page, submit_page
+        page = self.browser.new_page()
+        self.addCleanup(page.close)
+        self.workable.open(page, PAGE + flags)
+        fill_page(self.store, self.data, self.app, self.state, page, self.workable, fresh=True)
+        return page, submit_page(self.store, self.data, self.app, self.state, page, self.workable)
+
+    def fill(self, page):
+        from jobfill.apply.runner import fill_page
+        summary = fill_page(self.store, self.data, self.app, self.state, page, self.workable)
+        return summary, (self.data / "apply" / f"app{self.app}" / "report.json").read_text(encoding="utf-8")
+
+    def checked(self, page):
+        return page.evaluate("() => Object.fromEntries(Array.from(document.querySelectorAll("
+                             "'form[data-ui=eeoc-form] input:checked')).map((i) => [i.name, i.value]))")
+
+    def test_submit_reports_the_survey_and_fill_answers_it(self):
+        page, result = self.submitted_application()
+        self.assertTrue(result["submitted"])
+        self.assertEqual(result["survey"], "eeo")
+        self.assertIn("apply fill", result["next"])
+        self.assertEqual(self.store.application(self.app)["status"], "submitted")
+        summary, report = self.fill(page)
+        self.assertNotIn("moved_by_candidate", summary)          # jobfill brought the survey up, not the candidate
+        self.assertEqual(self.checked(page), {"race": "undisclosed", "gender": "undisclosed", "veteran": "not_veteran",
+                                              "disability": "undisclosed"})
+        # Non-binary is not offered (Male / Female / no answer): asked, never picked for them.
+        self.assertEqual([q["label"] for q in summary["needs_user"]], ["Gender"])
+        for label in ("Race or ethnicity", "Veteran status", "Disability status"):
+            self.assertIn(f'"label": "{label}"', report)
+        self.assertIsNone(page.evaluate("() => window.surveyAnswers"))   # the survey waits for the go-ahead
+
+    def test_survey_goes_in_only_through_submit(self):
+        from jobfill.apply.runner import submit_page
+        page, _ = self.submitted_application()
+        self.fill(page)
+        result = submit_page(self.store, self.data, self.app, self.state, page, self.workable)
+        self.assertEqual((result["submitted"], result["survey_submitted"]), (True, True))
+        self.assertNotIn("survey", result)
+        self.assertEqual(page.evaluate("() => window.surveyAnswers"),
+                         {"race": "undisclosed", "gender": "undisclosed", "veteran": "not_veteran",
+                          "disability": "undisclosed"})
+        self.assertIn("Your EEO form has been submitted successfully.", page.inner_text("body"))
+        self.assertFalse(page.evaluate("() => window.surveySkipped || false"))   # skip is the candidate's call
+
+    def test_preselection_is_not_an_answer_but_the_candidates_pick_is(self):
+        for key, value in (("gender", "female"), ("race", ["white"]), ("hispanic_latino", "no")):
+            self.store.set_fact(f"eeo.{key}", value)
+        page, _ = self.submitted_application()
+        page.click("form[data-ui=eeoc-form] [role=radio]:has(input[name=disability][value=disabled])")   # theirs
+        summary, _ = self.fill(page)
+        self.assertEqual(self.checked(page), {"race": "white", "gender": "female", "veteran": "not_veteran",
+                                              "disability": "disabled"})
+        self.assertEqual([c["label"] for c in summary["by_candidate"]], ["Disability status"])
+
+    def test_survey_without_federal_contractor_sections(self):
+        page, result = self.submitted_application("#eeo")
+        self.assertEqual(result["survey"], "eeo")
+        self.fill(page)
+        self.assertEqual(sorted(self.checked(page)), ["gender", "race"])
+
+    def test_no_survey(self):
+        page, result = self.submitted_application("")
+        self.assertTrue(result["submitted"])
+        self.assertNotIn("survey", result)
+        self.assertIsNone(self.workable.survey(page))
 
 
 if __name__ == "__main__":

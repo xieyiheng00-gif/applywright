@@ -129,8 +129,8 @@ it the same way and replace the upload with `apply set --field <resume field> --
    "Address" as city, region and country. Its date pickers take no date after the current month: an
    expected graduation comes back under `fill_failed` with that reason and the entry shows as ongoing;
    tell the candidate, do not retry it. It never uses Workable's "Autofill application" box. A
-   Cloudflare check at submit is a `captcha` blocker for the candidate. Workable asks EEO questions in an
-   optional survey after Submit (US jobs): the candidate answers or skips it there.
+   Cloudflare check at submit is a `captcha` blocker for the candidate. For US jobs Workable may show an
+   optional EEO survey right after the application went in (step 5).
 4. Review, in ONE message: every written answer (numbered, with character/word count), any
    `handoff` field still unresolved, and a reminder that the window shows the whole filled form.
    Ask them to check the window, then to say "submit" or list changes.
@@ -139,6 +139,15 @@ it the same way and replace the upload with `apply set --field <resume field> --
    the candidate to solve in the window; then run submit again. When `submitted` is true the
    application status becomes `submitted`. If they prefer, they click Submit themselves; then run
    `python -m jobfill app update <ID> --status submitted`.
+   A result with `survey: "eeo"` (Workable, US jobs) means the application is in and the site now shows its
+   optional EEO survey: race or ethnicity and gender, plus veteran and disability status for federal
+   contractors. Run `apply fill` once more: it answers from the stored `eeo.*` facts ("decline" is a valid
+   answer; the survey's own preselection counts as no answer) and lists under `needs_user` what the survey
+   does not offer (it has Male / Female only): ask the candidate, never infer. Show them the answers; the
+   survey goes in only after they say so, with `apply submit --app <ID> --confirm` again
+   (`survey_submitted: true`). Skipping is their call in the window (Workable then emails a link); never
+   click Skip for them. The reminder email's link (`/<company>/candidates/<id>/eeoc_profile/new`) is not a
+   job: `apply start` says so.
 
 ## Step 3: Agent fills in the built-in browser (company portals, other systems)
 

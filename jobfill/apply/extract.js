@@ -372,8 +372,12 @@
     if (f.option_refs) {
       f.options = f.option_refs.map((r) => r[0]);
       if (f.kind !== "buttons") {   // toggle buttons already carry their pressed value
+        const opts = f.option_refs.map((r) => document.querySelector(`[data-jobfill-id="${r[1]}"]`)).filter(Boolean);
         f.value = f.option_refs.filter((r) => isOn(document.querySelector(`[data-jobfill-id="${r[1]}"]`))).map((r) => r[0]);
         if (f.kind === "radio") f.value = f.value[0] || "";
+        // Still on the page's own preselection (Workable's EEO survey opens on "I don't wish to answer"): a site
+        // default, not anyone's answer.
+        if (f.kind === "radio" && f.value) f.preset = opts.every((o) => o.checked === o.defaultChecked);
       }
     }
     // An entry block the adapter numbered itself (Workable edits one entry at a time, so the open editor is

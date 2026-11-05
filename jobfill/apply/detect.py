@@ -244,6 +244,11 @@ def _workable(d: Detection, u, network: bool) -> Detection:
             return d
         return _not_job(d, "Jobs by Workable page, but not a single job listing.")
     sub = host.split(".")[0] if host != "apply.workable.com" else None
+    if re.match(r"^/[\w.-]+/candidates/[^/]+/(eeoc_profile/new|surveys/)", u.path):
+        d.ats = "workable"
+        return _not_job(d, "This is the link from Workable's reminder email to an optional survey (EEO) for an "
+                           "application already sent, not a job. The candidate answers or ignores it there; "
+                           "jobfill fills the survey only when Workable shows it right after `apply submit`.")
     m = WORKABLE_JOB.match(u.path)
     account = (m.group("account") if m else None) or sub
     if not m or (sub and m.group("account")):

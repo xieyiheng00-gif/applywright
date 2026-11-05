@@ -162,7 +162,7 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
             entry = {k: v for k, v in r.items() if k not in ("raw", "source", "match")}
             entry["kind"] = f["kind"]
             owner = None if dry_run or overwrite is True else _owner(store, f, r, typed, logged)
-            if owner is None and asked and _key(store, f) in asked and not is_empty(f) and typed is not None:
+            if owner is None and asked and _key(store, f) in asked and not _unanswered(f) and typed is not None:
                 owner = "candidate"   # jobfill asked and left it empty: what is there now is their pick
             if owner == "candidate":
                 entry = {"label": f["label"], "question_id": r.get("question_id"), "kind": f["kind"],
@@ -190,7 +190,7 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
                                             question_id=r.get("question_id"), source="user", tier=r.get("tier"),
                                             status="filled", fill=entry["fill"], section=f.get("section"),
                                             idx=f.get("index"))
-                elif not is_empty(f) and not (overwrite is True or (overwrite == "own" and owner == "jobfill")):
+                elif not _unanswered(f) and not (overwrite is True or (overwrite == "own" and owner == "jobfill")):
                     entry["fill"] = "kept (already has a value)"
                 elif (tried := store.fill_attempts(app_id, _key(store, f), r["value"])) >= MAX_FILL_ATTEMPTS:
                     entry["fill"] = f"not tried: failed {tried} times with this value"
@@ -243,6 +243,12 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
     if ai_context:
         report["ai_context"] = ai_context
     return report
+
+
+def _unanswered(f: dict) -> bool:
+    """Empty, or still on the page's own preselection (a radio group the site opens on \"I don't wish to
+    answer\"): nobody's answer, so the stored one goes in and nothing is taken as the candidate's."""
+    return is_empty(f) or bool(f.get("preset"))
 
 
 def _key(store, f: dict) -> str:
@@ -301,7 +307,7 @@ def _owner(store, f: dict, r: dict, typed: dict | None, logged: dict) -> str | N
     jobfill knows what it left in each field (``typed``); any other value is the candidate's, unless it
     already matches the profile's answer (a portal that prefills from the candidate's account).
     """
-    if typed is None or is_empty(f):
+    if typed is None or _unanswered(f):
         return None
     key = _key(store, f)
     if key in typed:
@@ -540,6 +546,8 @@ def watch_page(store, data_dir: Path, app_id: int, state: dict, page, adapter, *
         if page.is_closed():
             return ("closed", None)
         try:
+            if adapter.survey(page) and (store.application(app_id) or {}).get("status") != "submitted":
+                return ("submitted", None)   # the application went in; the site now asks its optional survey
             info = pages.read(page, adapter)
             if pages.blank(info):   # loading, or a page with no questions: maybe the confirmation
                 return ("submitted", None) if adapter.confirmed(page) else None
@@ -557,6 +565,9 @@ def watch_page(store, data_dir: Path, app_id: int, state: dict, page, adapter, *
         if kind == "submitted":
             store.update_application(app_id, status="submitted")
             out["record"] = results.write(store, data_dir, app_id)["markdown"]
+            survey = adapter.survey(page)
+            if survey:   # the site asks its optional survey next (Workable's EEO survey)
+                return {**out, "survey": survey, "next": SURVEY_NEXT.get(survey, SURVEY_NEXT["eeo"]).format(id=app_id)}
         return {**out, "next": WATCH_EVENTS[kind].format(id=app_id)}
 
     deadline = time.monotonic() + timeout
@@ -643,24 +654,66 @@ def submit_command(store, data_dir: Path, app_id: int, *, confirm: bool, headles
     adapter = adapters.get(state["ats"])
     with browser.session(data_dir, headless) as ctx:
         page, _ = open_page(ctx, state, adapter)
-        spot = place(page, adapter, state)
-        if spot["where"] == "earlier":
-            return {"submitted": False, **paused(state, spot, app_id)}
-        frame = adapter.frame(page)
-        btn = adapter.submit_button(frame)
-        if btn is None:
-            raise ApplyError("No submit button found on this page.")
-        btn.click()
-        page.wait_for_timeout(5000)
-        blockers = adapter.blockers(page)
-        done = adapter.confirmed(page)
-        errors = [] if done else adapter.errors(adapter.frame(page))
-        state["page_url"] = page.url
+        out = submit_page(store, data_dir, app_id, state, page, adapter)
     save_state(data_dir, app_id, state)
+    return out
+
+
+SURVEY_NEXT = {
+    "eeo": "The application is submitted. Workable now shows its optional EEO survey (race or ethnicity and gender; "
+           "for federal contractors also veteran and disability status). Run `python -m jobfill apply fill --app {id}`: "
+           "it answers from the stored EEO facts (\"decline\" is a valid answer) and lists what it lacks under "
+           "`needs_user`. Show the candidate the answers; the survey goes in only after they say so, with "
+           "`apply submit --app {id} --confirm` again. They may also skip it in the window (Workable then emails "
+           "them a link to answer later).",
+}
+
+
+def _submitted(page, adapter, on_survey: str | None) -> bool:
+    """The site confirmed it. Submitting a survey counts once the survey is gone."""
+    try:
+        return adapter.confirmed(page) and not (on_survey and adapter.survey(page))
+    except Exception:   # the page is still navigating
+        return False
+
+
+def submit_page(store, data_dir: Path, app_id: int, state: dict, page, adapter) -> dict:
+    """`apply submit --confirm` on the page in the window: the application, or a survey the site showed after it
+    (Workable's EEO survey). Returns the result; updates ``state`` (the caller saves it)."""
+    spot = place(page, adapter, state)
+    if spot["where"] == "earlier":
+        return {"submitted": False, **paused(state, spot, app_id)}
+    frame = adapter.frame(page)
+    on_survey = adapter.survey(page)   # submitting the survey, not the application
+    btn = adapter.submit_button(frame)
+    if btn is None:
+        raise ApplyError("No submit button found on this page.")
+    btn.click()
+    for _ in range(20):   # up to 5s for the confirmation, a survey, or the site's complaints
+        page.wait_for_timeout(250)
+        if _submitted(page, adapter, on_survey):
+            break
+    blockers = adapter.blockers(page)
+    done = _submitted(page, adapter, on_survey)
+    errors = [] if done else adapter.errors(adapter.frame(page))
+    state["page_url"] = page.url
     if done:
         store.update_application(app_id, status="submitted")
     record = results.write(store, data_dir, app_id)["markdown"]
-    return {"submitted": done, "record": record, "blockers": blockers, "errors": errors, "page_url": state["page_url"],
-            "next": None if done else ("Solve the CAPTCHA in the browser window, then run submit again."
-                                       if "captcha" in blockers else
-                                       "Not confirmed. Check the window for errors, fix them, and try again.")}
+    out = {"submitted": done, "record": record, "blockers": blockers, "errors": errors, "page_url": state["page_url"],
+           "next": None if done else ("Solve the CAPTCHA in the browser window, then run submit again."
+                                      if "captcha" in blockers else
+                                      "Not confirmed. Check the window for errors, fix them, and try again.")}
+    if on_survey:
+        out["survey_submitted"] = done
+        if done:
+            out["next"] = "The survey is submitted too. Nothing left to do for this application."
+        return out
+    survey = adapter.survey(page) if done else None
+    if survey:
+        out["survey"] = survey
+        out["next"] = SURVEY_NEXT.get(survey, SURVEY_NEXT["eeo"]).format(id=app_id)
+        after = place(page, adapter, state)   # jobfill brought this page up: the next fill does not take it as
+        if after["where"] == "new":           # the candidate's move
+            pages.remember(state["pages"], "new", after["index"], after["info"])
+    return out
