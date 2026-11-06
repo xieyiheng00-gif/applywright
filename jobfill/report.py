@@ -12,6 +12,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from . import timing
+
 PYTHON_SOURCES = ("fact:", "template", "derive:", "record:", "form:")
 OPEN = {"needs_ai": "needs an AI-written answer", "needs_user": "needs your answer",
         "uncertain": "new question (unclassified)", "unmatched": "new question (unclassified)"}
@@ -47,7 +49,7 @@ WHO = {"profile": "your profile (plain Python, no AI)", "ai": "AI", "you": "you"
        "open": "still open"}
 
 
-def build(store, app_id: int) -> dict:
+def build(store, app_id: int, book: timing.Book | None = None) -> dict:
     app = store.application(app_id)
     rows = store.answers(app_id)
     counts = {k: 0 for k in WHO}
@@ -61,10 +63,13 @@ def build(store, app_id: int) -> dict:
             "typed": _typed(r), **({"open_reason": open_reason(r)} if who == "open" else {}),
         })
     answered = counts["profile"] + counts["ai"] + counts["you"]
+    time_spent = (book or timing.Book(store.conn)).application(app_id)
     return {
-        "application": {k: app[k] for k in ("id", "company", "role", "status", "ats", "url", "created_at", "updated_at")},
+        "application": {k: app[k] for k in ("id", "company", "role", "status", "ats", "url", "giveup_why",
+                                            "giveup_reason", "created_at", "updated_at")},
         "summary": {"questions": len(rows), **counts,
                     "python_share": round(100 * counts["profile"] / answered) if answered else None},
+        **({"time": time_spent} if time_spent else {}),
         "fields": fields,
         "generated_at": datetime.now().astimezone().replace(microsecond=0).isoformat(),
     }
@@ -100,6 +105,8 @@ def markdown(rep: dict) -> str:
     lines = [f"# {a['company']} - {a['role'] or 'unknown role'}", "",
              f"- Application #{a['id']} | status: **{a['status']}** | system: {a['ats'] or 'unknown'}",
              f"- Posting: {a['url'] or '-'}",
+             *([f"- **jobfill could not fill this one, so it is yours to finish by hand** ({a['giveup_why']}): "
+                f"{a['giveup_reason']}"] if a.get("giveup_why") else []),
              f"- Started {a['created_at']} | report generated {rep['generated_at']}", "",
              "## Result", "",
              "| Answered by | Questions |", "|---|---|"]
@@ -108,6 +115,9 @@ def markdown(rep: dict) -> str:
     lines.append(f"| **Total questions on the form** | **{s['questions']}** |")
     if s["python_share"] is not None:
         lines += ["", f"Plain Python answered {s['python_share']}% of the answered questions without any AI tokens."]
+    if rep.get("time"):
+        lines += ["", "## Time", "", *timing.section(rep["time"]), "",
+                  f"Every step: `python -m jobfill app timing {a['id']}`"]
     lines += ["", "## Questions", "", "| # | Question | Answer | Answered by | Into the form |", "|---|---|---|---|---|"]
     for f in rep["fields"]:
         who = WHO[f["answered_by"]] if f["answered_by"] != "open" else f"open: {f.get('open_reason')}"
@@ -143,12 +153,20 @@ def stats(store) -> dict:
     """Totals across every application: how much plain Python did versus the AI."""
     totals = {k: 0 for k in WHO}
     per_app = []
-    for app in store.applications():
-        s = build(store, app["id"])["summary"]
+    book = timing.Book(store.conn)
+    apps = store.applications()
+    for app in apps:
+        s = build(store, app["id"], book)["summary"]
         for k in WHO:
             totals[k] += s[k]
         per_app.append({"id": app["id"], "company": app["company"], "role": app["role"], "status": app["status"],
                         **{k: s[k] for k in ("questions", "profile", "ai", "you", "open", "python_share")}})
     answered = totals["profile"] + totals["ai"] + totals["you"]
+    given_up = [{k: a[k] for k in ("id", "company", "role", "giveup_why", "giveup_reason")} for a in apps
+                if a.get("giveup_why")]
+    time_spent = book.overview(apps) if book.rows else None
     return {"applications": len(per_app), "totals": totals,
-            "python_share": round(100 * totals["profile"] / answered) if answered else None, "per_application": per_app}
+            "python_share": round(100 * totals["profile"] / answered) if answered else None, "per_application": per_app,
+            **({"given_up": given_up} if given_up else {}),
+            **({"time": {k: time_spent[k] for k in ("applications_timed", "median_active", "by_system", "gave_up",
+                                                    "writing")}} if time_spent else {})}

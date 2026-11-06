@@ -9,7 +9,7 @@ from functools import partial
 from pathlib import Path
 
 from .. import report as results
-from .. import resumes
+from .. import resumes, timing
 from ..db import ROOT
 from ..resolver import Resolver
 from ..text import closest_options, normalize
@@ -102,7 +102,8 @@ def start(store, data_dir: Path, url: str, *, company=None, role=None, source=No
 
 def read_fields(frame, adapter, root: str | None, **kw) -> list[dict]:
     """The fields under ``root``, as the adapter reads them (it may say what a field really asks)."""
-    return adapter.adjust(extract(frame, root, **kw))
+    with timing.phase("read_form"):
+        return adapter.adjust(extract(frame, root, **kw))
 
 
 def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, files: bool = True,
@@ -128,7 +129,8 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
     logged = {a["field_key"]: a for a in store.answers(app_id)} if typed is not None else {}
     custom = partial(adapter.custom_fill, store=store)
     # Repeating sections first (Workday's Work Experience / Education "Add"): one block per stored entry.
-    added = list(adapter.expand(frame, store, dry_run=dry_run))
+    with timing.phase("add_entries"):
+        added = list(adapter.expand(frame, store, dry_run=dry_run))
 
     def run(root: str | None) -> None:
         """Fill ``root`` (the form, or one entry block of it), re-reading it for follow-up questions."""
@@ -153,7 +155,8 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
         report["passes"] += 1
         seen.update(f["id"] for f in fields)
         by_id = {f["id"]: f for f in new}
-        result = Resolver(store, app_id, today=today, log=not dry_run).resolve([to_resolver_field(f) for f in new])
+        with timing.phase("resolve"):
+            result = Resolver(store, app_id, today=today, log=not dry_run).resolve([to_resolver_field(f) for f in new])
         if result.get("ai_context"):
             ai_context = result["ai_context"]
         # Upload files first: some systems (Lever) parse the resume and prefill other fields.
@@ -206,9 +209,10 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
                     # A search-and-pick menu takes a list (skills) one entry at a time, not as one joined text.
                     value = r["raw"] if f["kind"] == "selectinput" and isinstance(r.get("raw"), list) else r["value"]
                     try:
-                        ok, note = fill(frame, {**f, "question_id": r.get("question_id"),
-                                                "alternatives": r.get("alternatives")}, value, root=ROOT,
-                                        after=adapter.after_fill, custom=custom)
+                        with timing.phase("type", f["label"], f["kind"]):
+                            ok, note = fill(frame, {**f, "question_id": r.get("question_id"),
+                                                    "alternatives": r.get("alternatives")}, value, root=ROOT,
+                                            after=adapter.after_fill, custom=custom)
                     except NoExactChoice as e:
                         _ask_candidate(store, app_id, f, r, entry, e, asked)
                         report["fields"][r["id"]] = entry
@@ -277,7 +281,8 @@ def _search_list(store, app_id: int, frame, f: dict, r: dict, entry: dict, asked
     candidate's earlier picks for it) and pick only an exact result. Otherwise the candidate is asked, with
     what the searches found as the closest choices."""
     value = str(r["raw"])
-    hit, offered = search_combobox(frame, f["id"], value, store.learned_choices(r.get("question_id"), value))
+    with timing.phase("search_list", f["label"], f["kind"]):
+        hit, offered = search_combobox(frame, f["id"], value, store.learned_choices(r.get("question_id"), value))
     if hit is None:
         if offered:
             near = closest_options(value, offered)
@@ -435,11 +440,13 @@ def paused(state: dict, spot: dict, app_id: int) -> dict:
 def fill_page(store, data_dir: Path, app_id: int, state: dict, page, adapter, *, fresh=False, overwrite=False,
               files=True, dry_run=False, here=False) -> dict:
     """`apply fill` on the page in the window. Returns the summary; updates ``state`` (the caller saves it)."""
-    blockers = adapter.prepare(page, store, dry_run=dry_run)
+    with timing.phase("prepare"):
+        blockers = adapter.prepare(page, store, dry_run=dry_run)
     if GATES & set(blockers):
         report = {"fields": {}, "blockers": blockers}
     else:
-        spot = place(page, adapter, state)
+        with timing.phase("settle"):
+            spot = place(page, adapter, state)
         if spot["where"] == "earlier" and not here:
             state["page_url"] = page.url
             return paused(state, spot, app_id)
@@ -621,7 +628,8 @@ def fill_command(store, data_dir: Path, app_id: int, *, overwrite=False, headles
         raise ApplyError(f"application {app_id} is handled by the agent ({state['handler']}), not the Python filler")
     adapter = adapters.get(state["ats"])
     with browser.session(data_dir, headless) as ctx:
-        page, fresh = open_page(ctx, state, adapter)
+        with timing.phase("open_page"):
+            page, fresh = open_page(ctx, state, adapter)
         out = fill_page(store, data_dir, app_id, state, page, adapter, fresh=fresh, overwrite=overwrite, files=files,
                         dry_run=dry_run, here=here)
     save_state(data_dir, app_id, state)

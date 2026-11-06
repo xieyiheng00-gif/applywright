@@ -10,7 +10,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import db, report
+from . import db, report, timing
 from .catalog import PLAYBOOKS, RECORD_KINDS, choice_set
 from .resolver import Resolver, ai_task_for, dumps
 from .store import Store, ValidationError
@@ -18,7 +18,11 @@ from .text import company_key, normalize
 from .writing import check_answer, mentions
 
 
+GIVE_UP_WHY = ("unsupported", "login", "captcha", "widget", "closed", "other")
+
+
 def _out(obj) -> None:
+    timing.result(obj)
     print(obj if isinstance(obj, str) else dumps(obj))
 
 
@@ -164,6 +168,7 @@ def cmd_resolve(store, args):
     payload = _read_json(args.file)
     fields = payload["fields"] if isinstance(payload, dict) else payload
     app_id = args.app or (payload.get("application_id") if isinstance(payload, dict) else None)
+    timing.belongs_to(app_id)
     result = Resolver(store, app_id, log=not args.no_log).resolve(fields)
     if args.compact:
         result["fields"] = [{k: v for k, v in f.items() if k not in ("match", "source", "raw")} for f in result["fields"]]
@@ -192,6 +197,7 @@ def cmd_answer(store, args):
         text = Path(args.file).read_text(encoding="utf-8").strip() if args.file else args.text
         if not text:
             raise ValidationError("pass --text or --file")
+        timing.note(question=args.question, words=len(text.split()), source=getattr(args, "source", "ai"))
         check = _check_answer(store, args, text)
         if args.action == "check":
             return _out(check)
@@ -242,6 +248,28 @@ def cmd_app(store, args):
         _out(report.markdown(report.build(store, args.id)) if args.print else written)
     elif args.action == "stats":
         _out(report.stats(store))
+    elif args.action == "timing":
+        book = timing.Book(store.conn)
+        if args.id is None:
+            overview = book.overview(store.applications())
+            return _out(overview if args.json else timing.markdown_overview(overview))
+        app = store.application(args.id)
+        info = book.application(args.id, timeline=True)
+        if info is None:
+            return _out({"id": args.id, "note": f"Not timed. {timing.OFF}"})
+        _out(info if args.json else timing.markdown_application(app, info))
+    elif args.action == "giveup":
+        _give_up(store, args)
+
+
+def _give_up(store, args) -> None:
+    """The agent concluded a robot cannot fill this application: the candidate does the rest by hand."""
+    timing.note(why=args.why, reason=args.reason)
+    app = store.update_application(args.id, status="manual", giveup_why=args.why, giveup_reason=args.reason)
+    written = report.write(store, _data_dir(args), args.id)["markdown"]
+    info = timing.Book(store.conn).application(args.id) or {}
+    _out({"id": args.id, "company": app["company"], "status": app["status"], "why": args.why, "reason": args.reason,
+          **info.get("gave_up", {}), "record": written})
 
 
 def _resume_arg(store, path: str | None) -> str | None:
@@ -268,6 +296,7 @@ def cmd_apply(store, args):
         if args.action == "detect":
             return _out(detect(args.url, network=not args.no_network).to_dict())
         if args.action == "start":
+            timing.note(url=args.url)
             return _out(runner.start(store, data_dir, args.url, company=args.company, role=args.role,
                                      source=args.source, referrer=args.referrer, ats=args.ats,
                                      network=not args.no_network, resume=args.resume))
@@ -297,6 +326,7 @@ def cmd_apply(store, args):
             from .apply import browser
             return _out({"closed": browser.close(data_dir)})
     except runner.ApplyError as e:
+        timing.note(error=e.payload["error"][:200])
         print(dumps(e.payload), file=sys.stderr)
         raise SystemExit(e.code)
 
@@ -610,6 +640,13 @@ def build_parser() -> argparse.ArgumentParser:
     x = ap.add_parser("report", help="write the result record: every question, its answer, who answered it")
     x.add_argument("id", type=int); x.add_argument("--print", action="store_true", help="print the Markdown")
     ap.add_parser("stats", help="plain Python vs AI vs you, across all applications")
+    x = ap.add_parser("timing", help="development, with JOBFILL_TIMING=1: where the time went; every step of one "
+                                     "application, or every run and application")
+    x.add_argument("id", type=int, nargs="?"); x.add_argument("--json", action="store_true")
+    x = ap.add_parser("giveup", help="a robot cannot fill this application: record why (status: manual)")
+    x.add_argument("id", type=int)
+    x.add_argument("--why", required=True, choices=GIVE_UP_WHY)
+    x.add_argument("--reason", required=True, help="one line: what stopped it")
     s.set_defaults(fn=cmd_app)
 
     s = sub.add_parser("apply", help="detect the application system of a job URL and fill its form")
@@ -728,11 +765,18 @@ def main(argv: list[str] | None = None) -> int:
             pass
     args = build_parser().parse_args(argv)
     conn = db.connect(args.db)
+    timing.start(conn, timing.command_name(args), getattr(args, "id" if args.command == "app" else "app", None))
+    error = None
     try:
         args.fn(Store(conn), args)
     except (ValidationError, KeyError, ValueError, json.JSONDecodeError) as e:
-        print(dumps({"error": str(e)}), file=sys.stderr)
+        error = str(e)
+        print(dumps({"error": error}), file=sys.stderr)
         return 2
+    except Exception as e:   # a crash is shown as before, and its row says so
+        error = f"{type(e).__name__}: {e}"
+        raise
     finally:
+        timing.finish(error)
         conn.close()
     return 0

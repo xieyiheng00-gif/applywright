@@ -184,7 +184,7 @@ answer, who answered it (the profile via plain Python, the AI, or the candidate)
 jobfill typed it in. `apply fill`, `apply set`, `answer record`, `apply submit` and
 `app update --status` keep `data/applications/app<ID>_<company>_<role>.md` (and `.json`) current.
 
-When the application is done (submitted, or abandoned with `app update <ID> --status withdrawn`):
+When the application is done (submitted, given up on, or abandoned with `app update <ID> --status withdrawn`):
 - End with one line linking that Markdown file and its result line, e.g. "31 of 36 answered
   questions came from your profile with no AI (86%); 3 written by AI; 2 by you."
 - `python -m jobfill app report <ID>` rewrites it on demand (`--print` shows it);
@@ -196,5 +196,8 @@ When the application is done (submitted, or abandoned with `app update <ID> --st
   documents directly. Missing facts are asked once and stored.
 - Never type passwords, never solve CAPTCHAs, never accept terms the candidate has not agreed to
   (`consent.*` facts record their standing choices).
+- If a robot cannot fill this application and the candidate has to do it by hand, run
+  `python -m jobfill app giveup <ID> --why <unsupported|login|captcha|widget|closed|other> --reason "<what stopped it, one line>"`,
+  tell them the reason, and stop working on it. Starting over with another filler (`--ats generic`) is not giving up.
 - When finished: `python -m jobfill apply close` closes the jobfill browser window (it otherwise
   stays open for the next application, keeping any logins).

@@ -22,6 +22,8 @@ import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
 
+from .. import timing
+
 LAUNCH_TIMEOUT = 20.0
 
 
@@ -159,10 +161,12 @@ def close(data_dir: Path) -> bool:
 @contextmanager
 def session(data_dir: Path, headless: bool = False):
     """Yield the shared browser context; disconnecting leaves the window open."""
+    began = time.perf_counter()
     from playwright.sync_api import sync_playwright
     ep = ensure(data_dir, headless)
     with sync_playwright() as p:
         browser = p.chromium.connect_over_cdp(ep)
+        timing.spent("connect_browser", time.perf_counter() - began)
         yield browser.contexts[0] if browser.contexts else browser.new_context()
 
 
