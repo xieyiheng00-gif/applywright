@@ -161,7 +161,7 @@ Plain Python still answers the questions; you drive the page.
 2. For each form page:
    - Read only the controls: `read_page` with `filter: "interactive"`. Avoid screenshots unless the
      page is unreadable.
-   - Write `data/forms/app<ID>_p<N>.json` in the field JSON format from `README.md` (label, type,
+   - Write `data/forms/app<ID>_p<N>.json` in the field JSON format from `jobfill/README.md` (label, type,
      options, required, `section`/`index` for repeated education/experience blocks, max length).
      Use the field's `ref` as its `id`.
    - `python -m jobfill resolve data/forms/app<ID>_p<N>.json --app <ID> --compact`, then handle
