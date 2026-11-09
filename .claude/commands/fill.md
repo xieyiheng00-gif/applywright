@@ -13,7 +13,7 @@ fields that really need writing.
 
 ## 2. Resolve the form
 
-Write the fields to `data/forms/app<ID>.json` using the contract in `README.md` ("Field JSON").
+Write the fields to `data/forms/app<ID>.json` using the contract in `jobfill/README.md` ("Field JSON").
 Mark repeating blocks with `section` (`education`, `experience`, `project`, `reference`) and
 `index` (0 = most recent). Then:
 
