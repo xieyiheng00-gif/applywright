@@ -103,7 +103,7 @@ def start(store, data_dir: Path, url: str, *, company=None, role=None, source=No
 def read_fields(frame, adapter, root: str | None, **kw) -> list[dict]:
     """The fields under ``root``, as the adapter reads them (it may say what a field really asks)."""
     with timing.phase("read_form"):
-        return adapter.adjust(extract(frame, root, **kw))
+        return adapter.adjust(extract(frame, root, searches=adapter.searches, **kw))
 
 
 def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, files: bool = True,

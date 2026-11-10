@@ -9,7 +9,7 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
 | Command | File | When |
 |---|---|---|
 | `/setup` | `.claude/commands/setup.md` | First run: import documents, collect facts (chat questionnaire or the setup portal), write base material |
-| `/apply` | `.claude/commands/apply.md` | `/apply <job URL>`: detect the system, auto-fill (Greenhouse/Lever/iCIMS/Ashby/Workday/Workable in Python, other portals in the built-in browser) |
+| `/apply` | `.claude/commands/apply.md` | `/apply <job URL>`: detect the system, auto-fill (Greenhouse/Lever/iCIMS/Ashby/Workday/Workable/SmartRecruiters in Python, other portals in the built-in browser) |
 | `/fill`  | `.claude/commands/fill.md`  | Answer a form given as field JSON: resolve, ask gaps, write tier-3 answers |
 | `/learn` | `.claude/commands/learn.md` | Classify questions the bank did not recognize |
 | `/update`| `.claude/commands/update.md`| New project/job/skill, changed visa, stale tier-2 facts |
@@ -66,6 +66,25 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   `runner.submit_page` reports it, `apply fill` answers it (a radio still on the page's own preselection is
   `preset`, not an answer), and only another `apply submit --confirm` sends it. Tested on
   `tests/fixtures/workable_like.html` (`#eeo`, `#ofccp`) in `tests/test_workable.py`.
+- Web components: `extract.js` reads fields drawn inside open shadow roots as the page is drawn (the flat tree: a
+  host's shadow root in place of its children, a `<slot>` as its assigned nodes; ids and `<label for>` in the
+  control's own tree, then the trees around it; a component's `label` attribute or label slot when it holds only
+  that control) and gives each field `hosts` (its components) and `test_ids` (`data-test` hooks around it).
+  On a page without shadow roots every helper is the plain DOM call. The option scripts in `forms.py` share
+  `DEEP_JS` for the same reach. `Adapter.searches(field)` names search boxes whose options are not read (they
+  list nothing until typed into).
+- SmartRecruiters: `detect.py` `_smartrecruiters` (posting `jobs.smartrecruiters.com/<company>/<id>`, the form
+  `/oneclick-ui/company/<company>/publication/<uuid>`, company pages; the public API by id or uuid for the posting,
+  404 = removed, `active: false` = closed, and the form's link) and the `SmartRecruiters` adapter, all spl-* web
+  components told apart by `test_ids` / `hosts` in `adjust` (`widget`): the location search (city typed, the
+  suggestion with the same city and region / country clicked, `_same_place`; none: asked), title / company /
+  school searches that keep a typed name, flatpickr month pickers typed YYYY-MM-DD + Enter, the phone's country
+  list set by the stored code (`SR_PHONE_JS`), Experience / Education through `Adapter.entries` (Add, fill,
+  Save), screening questions and consents on page 2 (never "Select all"), never the "Easy Apply" import;
+  DataDome's CAPTCHA is a `captcha` blocker. Tested on `tests/fixtures/smartrecruiters_like.html` in
+  `tests/test_smartrecruiters.py`: page 1 mirrors the live form; the editors, pickers and page 2 follow
+  SmartRecruiters' public bundle. Inspect live forms only through the jobfill window: its own API calls
+  made from a script trip DataDome.
 - Accounts: `jobfill/accounts.py` (secret.env, HMAC-SHA256 per-company passwords, login email),
   `jobfill/apply/login.py` (sign in / create / verify flow), `jobfill/mail.py` (optional IMAP reader).
   The `accounts` table holds no passwords. Login is tested only on `tests/fixtures/auth_like.html`.

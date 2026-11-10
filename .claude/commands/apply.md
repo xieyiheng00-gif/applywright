@@ -17,7 +17,7 @@ If `$ARGUMENTS` is empty, ask for the job URL and stop.
 | `handler: "unsupported"` | Reply that jobfill does not support this system yet and give the URL to apply manually. Stop. |
 | `handler: "follow"` (LinkedIn, Indeed, ...) | Open the URL in the built-in browser, find the employer's own apply link (not Easy Apply), and run `apply start` again with that link. If there is none (Easy Apply only), say so and stop. |
 | `handler: "agent_check"` | The HTML alone could not tell. Open it in the built-in browser and read the text (`get_page_text`). Not a job posting: reply with the error and stop. A job: look at where "Apply" leads or which iframe holds the form; rerun `apply start` with that apply URL, or with `--ats custom --company "<Company>" --role "<Role>"` for a company portal. |
-| `handler: "python"` (Greenhouse, Lever, iCIMS, Ashby, Workday, Workable) | Step 2. |
+| `handler: "python"` (Greenhouse, Lever, iCIMS, Ashby, Workday, Workable, SmartRecruiters) | Step 2. |
 | `handler: "ai"` (Amazon, TikTok, Google, other portals and ATSs) | Step 3, unless the portal needs an account: then rerun `apply start "<url>" --ats generic` so it is filled in the jobfill window, where `jobfill login` signs in, and go to Step 2. |
 
 The output includes `app_id`, company, role, and earlier applications to the same company
@@ -30,7 +30,7 @@ company, none clearly matching the role), ask whether one of them fits and set i
 `python -m jobfill app update <ID> --resume "<file>"` before filling. To swap the file after a fill, set
 it the same way and replace the upload with `apply set --field <resume field> --value "<file>"`.
 
-## Step 2: Python filler (Greenhouse, Lever, iCIMS, Ashby, Workday, Workable)
+## Step 2: Python filler (Greenhouse, Lever, iCIMS, Ashby, Workday, Workable, SmartRecruiters)
 
 1. `python -m jobfill apply fill --app <ID>` opens a visible Chromium window (it stays open between
    commands), fills the form from the database, re-reads it for follow-up questions, and prints what
@@ -131,6 +131,15 @@ it the same way and replace the upload with `apply set --field <resume field> --
    tell the candidate, do not retry it. It never uses Workable's "Autofill application" box. A
    Cloudflare check at submit is a `captcha` blocker for the candidate. For US jobs Workable may show an
    optional EEO survey right after the application went in (step 5).
+   SmartRecruiters has one or two pages: page 1 (personal information, Experience / Education added one
+   entry at a time, profiles, resume, an optional message to the hiring team), then, when the job has
+   screening questions, `apply next` to page 2 (questions and consents) with Submit. Its City takes only
+   one of its suggestions: when none is the stored place it comes back under `needs_user` with the
+   suggestions; the candidate picks in the window or tells you (`apply set`). The message to the hiring
+   team is an optional cover letter: skipped unless the candidate wants one. The talent-pool and other
+   optional consents are left for the candidate (`unmatched`). A DataDome CAPTCHA (`blockers:
+   ["captcha"]`) can appear at any point: the candidate solves it in the window, then run the command
+   again. Never inspect a SmartRecruiters form by calling its API yourself: that trips DataDome.
 4. Review, in ONE message: every written answer (numbered, with character/word count), any
    `handoff` field still unresolved, and a reminder that the window shows the whole filled form.
    Ask them to check the window, then to say "submit" or list changes.

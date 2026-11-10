@@ -9,30 +9,76 @@ from ..text import closest_options, names_same, normalize, search_queries
 
 EXTRACT_JS = (Path(__file__).with_name("extract.js")).read_text(encoding="utf-8")
 
+# Shared by the scripts below. A list drawn by a web component (SmartRecruiters' spl-autocomplete) lives in a shadow
+# root, where document.querySelector does not reach: ``find`` and ``every`` also look there, ``near`` resolves an id
+# in the element's own tree, and ``label`` reads an option by the component's label (spl-select-option) or by its
+# drawn text. On a page without shadow roots each is the plain DOM call.
+DEEP_JS = r"""
+  const kids = (n) => {
+    if (n.shadowRoot) return n.shadowRoot.childNodes;
+    if (n.tagName === "SLOT") { const a = n.assignedNodes(); if (a.length) return a; }
+    return n.childNodes;
+  };
+  const every = (node, selector) => {
+    const out = [];
+    const walk = (n) => { for (const c of kids(n)) { if (c.nodeType === 1) { if (c.matches(selector)) out.push(c); walk(c); } } };
+    walk(node);
+    return out;
+  };
+  const find = (selector) => document.querySelector(selector) || every(document.documentElement, selector)[0] || null;
+  const near = (el, id) => {
+    for (let r = el && el.getRootNode(); r; r = r.host ? r.host.getRootNode() : null) {
+      const hit = r.getElementById && r.getElementById(id);
+      if (hit || r === document) return hit || null;
+    }
+    return document.getElementById(id);
+  };
+  const drawn = (n) => {
+    let out = "";
+    const walk = (x) => {
+      if (x.nodeType === 3) { out += x.nodeValue; return; }
+      if (x.nodeType !== 1 || /^(SCRIPT|STYLE|SVG)$/i.test(x.tagName)) return;
+      const st = getComputedStyle(x);
+      if (st.display === "none" || st.visibility === "hidden") return;
+      for (const c of kids(x)) walk(c);
+      if (/^(DIV|P|LI|BR)$/.test(x.tagName)) out += " ";
+    };
+    walk(n);
+    return out;
+  };
+  const label = (o) => {   // an option component's label (spl-select-option), never the list's own
+    if (o.getRootNode() === document) return o.textContent;
+    for (let r = o.getRootNode(); r && r.host && /OPTION|ITEM/.test(r.host.tagName); r = r.host.getRootNode()) {
+      if (r.host.getAttribute("label")) return r.host.getAttribute("label");
+    }
+    return drawn(o);
+  };
+"""
+
 # Visible options of an open dropdown: the listbox the input controls, else any visible listbox.
 # Options under a group heading read as "Group: Option"; each is tagged data-jobfill-opt=<n> so the
 # n-th text can be clicked even when two options share a label.
-OPTIONS_JS = r"""(id) => {
-  const el = document.querySelector(`[data-jobfill-id="${id}"]`);
+OPTIONS_JS = r"""(id) => {""" + DEEP_JS + r"""
+  const el = find(`[data-jobfill-id="${id}"]`);
   const shown = (n) => n && n.getClientRects().length > 0 && getComputedStyle(n).visibility !== "hidden";
   const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
   let boxes = [];
   for (const attr of ["aria-controls", "aria-owns"]) {   // often the same list (Workable): read it once
     const ref = el && el.getAttribute(attr);
-    const box = ref && document.getElementById(ref);
+    const box = ref && near(el, ref);
     if (box && !boxes.includes(box)) boxes.push(box);
   }
-  if (!boxes.length) boxes = Array.from(document.querySelectorAll("[role=listbox]")).filter(shown);
+  if (!boxes.length) boxes = every(document.documentElement, "[role=listbox]").filter(shown);
   let found = [];
-  for (const b of boxes) found.push(...Array.from(b.querySelectorAll("[role=option]")).filter(shown));
-  if (!found.length) found = Array.from(document.querySelectorAll("[role=option]")).filter(shown);
-  document.querySelectorAll("[data-jobfill-opt]").forEach((o) => o.removeAttribute("data-jobfill-opt"));
+  for (const b of boxes) found.push(...every(b, "[role=option]").filter(shown));
+  if (!found.length) found = every(document.documentElement, "[role=option]").filter(shown);
+  every(document.documentElement, "[data-jobfill-opt]").forEach((o) => o.removeAttribute("data-jobfill-opt"));
   return found.map((o, i) => {
     o.setAttribute("data-jobfill-opt", String(i));
     const group = o.parentElement && o.parentElement.closest("[role=group], [class*='group' i]");
     const head = group && group.querySelector("[class*='group-heading' i], [class*='groupHeading'], [role=presentation]");
     const heading = head && !head.contains(o) && !head.querySelector("[role=option]") ? clean(head.textContent) : "";
-    return heading ? `${heading}: ${clean(o.textContent)}` : clean(o.textContent);
+    return heading ? `${heading}: ${clean(label(o))}` : clean(label(o));
   });
 }"""
 
@@ -41,15 +87,16 @@ NOT_AN_OPTION = re.compile(r"^(no options?|no results?( found)?|loading\.*|type 
 
 # The list a "Select One" button opens (aria-controls, else the visible listbox): every enabled option's
 # text, scrolling through a long list in case it only renders the rows in view. null while it is not open.
-LIST_JS = r"""async (id) => {
-  const el = document.querySelector(`[data-jobfill-id="${id}"]`);
+LIST_JS = r"""async (id) => {""" + DEEP_JS + r"""
+  const el = find(`[data-jobfill-id="${id}"]`);
   const shown = (n) => n && n.getClientRects().length > 0 && getComputedStyle(n).visibility !== "hidden";
   const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
   const ref = el && el.getAttribute("aria-controls");
-  const list = (ref && document.getElementById(ref)) || Array.from(document.querySelectorAll("[role=listbox]")).find(shown);
+  const list = (ref && near(el, ref)) || every(document.documentElement, "[role=listbox]").find(shown);
   if (!shown(list)) return null;
-  const read = () => Array.from(list.querySelectorAll("[role=option]"))
-    .filter((o) => o.getAttribute("aria-disabled") !== "true").map((o) => clean(o.innerText || o.textContent)).filter(Boolean);
+  const text = (o) => o.getRootNode() === document ? (o.innerText || o.textContent) : label(o);
+  const read = () => every(list, "[role=option]")
+    .filter((o) => o.getAttribute("aria-disabled") !== "true").map((o) => clean(text(o))).filter(Boolean);
   const out = read();
   const start = list.scrollTop;
   for (let i = 0; i < 60 && list.scrollTop + list.clientHeight < list.scrollHeight - 1; i++) {
@@ -63,24 +110,25 @@ LIST_JS = r"""async (id) => {
 
 # Find the option reading ``text`` in that list (scrolling until it is rendered), bring it into view and tag it
 # data-jobfill-opt="pick" for the click.
-MARK_JS = r"""async ([id, text]) => {
-  const el = document.querySelector(`[data-jobfill-id="${id}"]`);
+MARK_JS = r"""async ([id, want]) => {""" + DEEP_JS + r"""
+  const el = find(`[data-jobfill-id="${id}"]`);
   const shown = (n) => n && n.getClientRects().length > 0 && getComputedStyle(n).visibility !== "hidden";
   const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
   const ref = el && el.getAttribute("aria-controls");
-  const list = (ref && document.getElementById(ref)) || Array.from(document.querySelectorAll("[role=listbox]")).find(shown);
+  const list = (ref && near(el, ref)) || every(document.documentElement, "[role=listbox]").find(shown);
   if (!shown(list)) return false;
-  document.querySelectorAll("[data-jobfill-opt]").forEach((o) => o.removeAttribute("data-jobfill-opt"));
+  every(document.documentElement, "[data-jobfill-opt]").forEach((o) => o.removeAttribute("data-jobfill-opt"));
   const pause = () => new Promise((r) => setTimeout(r, 120));
-  const find = () => Array.from(list.querySelectorAll("[role=option]")).find((o) => clean(o.innerText || o.textContent) === text);
+  const text = (o) => o.getRootNode() === document ? (o.innerText || o.textContent) : label(o);
+  const pick = () => every(list, "[role=option]").find((o) => clean(text(o)) === want);
   list.scrollTop = 0;
   await pause();
   for (let i = 0; i < 60; i++) {
-    const hit = find();
+    const hit = pick();
     if (hit) {
       hit.scrollIntoView({block: "nearest"});
       await pause();
-      const now = find();   // a list that renders only the rows in view redraws them on that scroll
+      const now = pick();   // a list that renders only the rows in view redraws them on that scroll
       if (now) { now.setAttribute("data-jobfill-opt", "pick"); return true; }
       continue;
     }
@@ -109,14 +157,15 @@ def sel(field_id: str) -> str:
 
 
 def extract(frame, root_selector: str | None = None, read_options: bool = True,
-            known: set[str] | None = None) -> list[dict]:
+            known: set[str] | None = None, searches=None) -> list[dict]:
     """Every field on the page. ``read_options`` opens dropdowns whose options only exist while open
-    (comboboxes, "Select One" buttons), except the ``known`` ones, already read in an earlier pass."""
+    (comboboxes, "Select One" buttons), except the ``known`` ones, already read in an earlier pass, and the ones
+    ``searches(field)`` says list nothing until typed into (SmartRecruiters' location search)."""
     fields = frame.evaluate(EXTRACT_JS, root_selector)
     fields = [f for f in fields if f.get("type") != "password"]
     if read_options:
         for f in fields:
-            if f.get("options") or f["id"] in (known or ()):
+            if f.get("options") or f["id"] in (known or ()) or (searches is not None and searches(f)):
                 continue
             if f["kind"] == "combobox":
                 f["options"] = combobox_options(frame, f["id"])
@@ -384,9 +433,9 @@ def _click_choice(frame, ref: str) -> bool:
         pass
     if loc.is_checked():
         return True
-    # Custom-styled inputs: click the label the user would click.
-    frame.evaluate("""(ref) => { const e = document.querySelector(`[data-jobfill-id="${ref}"]`);
-        const l = (e.id && document.querySelector(`label[for="${CSS.escape(e.id)}"]`)) || e.closest('label');
+    # Custom-styled inputs: click the label the user would click (in the input's own tree: a web component's).
+    frame.evaluate("""(ref) => {""" + DEEP_JS + """ const e = find(`[data-jobfill-id="${ref}"]`);
+        const l = (e.id && e.getRootNode().querySelector(`label[for="${CSS.escape(e.id)}"]`)) || e.closest('label');
         (l || e).click(); }""", ref)
     return loc.is_checked()
 
