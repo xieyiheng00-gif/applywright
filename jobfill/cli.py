@@ -305,7 +305,10 @@ def cmd_apply(store, args):
                                             headless=args.headless, files=not args.no_files,
                                             dry_run=args.dry_run, here=args.here))
         if args.action == "set":
-            value = json.loads(args.value) if args.json else args.value
+            if bool(args.value) == bool(args.file):
+                raise ValidationError("pass --value or --file")
+            text = Path(args.file).read_text(encoding="utf-8").strip() if args.file else args.value
+            value = json.loads(text) if args.json else text
             return _out(runner.set_command(store, data_dir, args.app, args.field, value, headless=args.headless,
                                            force=args.force, here=args.here))
         if args.action == "watch":
@@ -674,7 +677,8 @@ def build_parser() -> argparse.ArgumentParser:
             x.add_argument("--here", action="store_true",
                            help="act on an earlier page the candidate went back to (only when they ask)")
         if name == "set":
-            x.add_argument("--field", required=True); x.add_argument("--value", required=True)
+            x.add_argument("--field", required=True); x.add_argument("--value")
+            x.add_argument("--file", help="read the value from a file (written answers)")
             x.add_argument("--json", action="store_true", help="parse VALUE as JSON (lists, booleans)")
             x.add_argument("--force", action="store_true",
                            help="replace an answer the candidate typed in the window (only when they ask)")

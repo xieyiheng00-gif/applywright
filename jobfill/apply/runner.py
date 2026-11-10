@@ -172,6 +172,13 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
                          "status": "filled", "value": f["value"], "fill": "kept (the candidate's answer)",
                          "by": "candidate"}
                 theirs.append((f, r))
+            elif r.get("no_exact") and owner == "jobfill" and not dry_run:
+                # Picked on an earlier run (found by searching the list): the answer, not an open question.
+                entry = {"label": f["label"], "question_id": r.get("question_id"), "kind": f["kind"],
+                         "status": "filled", "value": f["value"], "fill": "kept (already has a value)"}
+                store.record_answer(app_id, _key(store, f), f["label"], f["value"], question_id=r.get("question_id"),
+                                    source=r.get("source") or "", tier=r.get("tier"), status="filled",
+                                    fill=entry["fill"], section=f.get("section"), idx=f.get("index"))
             elif r.get("no_exact") and f["kind"] == "combobox" and not dry_run and is_empty(f) \
                     and (found := _search_list(store, app_id, frame, f, r, entry, asked)):
                 attempts.append((r["id"], f, found))
@@ -373,6 +380,11 @@ def summarize(report: dict, app_id: int) -> dict:
                          for k, v in fields.items() if v.get("by") == "candidate"],
         "page": report.get("page"),
     }
+    # Run `apply fill` again on this page only to retry a failed field: nothing else changes the result. An
+    # approved answer goes straight into its own field with `apply set`.
+    out["rerun"] = bool(out["fill_failed"])
+    for task in out["needs_ai"]:
+        task["set_with"] = f"python -m jobfill apply set --app {app_id} --field {task['field']} --file <approved answer>"
     if report.get("moved_by_candidate"):
         out["moved_by_candidate"] = True
         out["note"] = ("The candidate moved on to this page themselves; jobfill filled what was left and kept "
@@ -490,8 +502,11 @@ def set_field(store, app_id: int, state: dict, page, adapter, field_id: str, val
         prior = next((a for a in store.answers(app_id) if a["field_key"] == key), None)
         asked = state.setdefault("asked", {}).pop(key, None)
         question_id = (asked or {}).get("question_id") or (prior or {}).get("question_id")
-        store.record_answer(app_id, key, f["label"], value, question_id=question_id, source="user", status="filled",
-                            fill="ok", section=f.get("section"), idx=f.get("index"))
+        # An approved answer recorded before typing stays what it is (AI-written, tier 3): only its fill is new.
+        same = prior if prior and prior["status"] == "filled" and prior["value"] == value else None
+        store.record_answer(app_id, key, f["label"], value, question_id=question_id,
+                            source=same["source"] if same else "user", tier=same["tier"] if same else None,
+                            status="filled", fill="ok", section=f.get("section"), idx=f.get("index"))
         store.note_fill(app_id, key, "ok", value)   # clears any earlier failures
         if asked:   # the candidate told the agent which choice: remembered for this answer on other forms
             store.remember_choice(asked["question_id"], asked["value"], after["value"] if after else value,

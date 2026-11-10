@@ -13,8 +13,8 @@ so the agent does nothing extra to be measured, and a command that is killed sti
   `match`, classifying new questions. A silence before a command with no application goes to the batch
   (``shared``).
 - **The candidate**: `apply watch` and `login` run while the candidate acts, and the time around `login` is
-  theirs too. Turn hooks (README, "Measuring time") mark that the agent ended its turn (``pause``) and that the
-  candidate replied (``resume``); the wait lasts from one to the other, or to the next command.
+  theirs too. Turn hooks (jobfill/README.md, "Measuring time") mark that the agent ended its turn (``pause``)
+  and that the candidate replied (``resume``); the wait lasts from one to the other, or to the next command.
 - **Nobody**: a silence over ``IDLE_AFTER`` is charged to no one and ends the run (a batch, as a whole).
 
 `app giveup` (for everyone, see cli.py) also leaves a row, so this says how much work came before it.
@@ -50,7 +50,7 @@ WRITING = {"answer check", "answer record"}
 CLASSIFYING = {"learn", "pending", "match", "question list", "question show", "question alias", "fact define"}
 STARTS = {"apply start", "app start"}                # the application exists only once these have run
 
-OFF = 'It is a development tool, off unless JOBFILL_TIMING=1 is set (README, "Measuring time").'
+OFF = 'It is a development tool, off unless JOBFILL_TIMING=1 is set (jobfill/README.md, "Measuring time").'
 
 ACTIVE = ("python", "writing", "classifying", "agent")
 LABEL = {"python": "jobfill (plain Python and the browser)", "writing": "Agent writing answers",

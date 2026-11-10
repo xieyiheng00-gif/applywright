@@ -434,7 +434,7 @@ class TestTurnMarks(unittest.TestCase):
         self.assertNotIn("timing.py", tracked.read_text(encoding="utf-8") if tracked.exists() else "")
 
     def test_the_readme_gives_the_settings_a_checkout_needs(self):
-        readme = (REPO / "README.md").read_text(encoding="utf-8")
+        readme = (REPO / "jobfill" / "README.md").read_text(encoding="utf-8")
         blocks = [b.split("```")[0] for b in readme.split("```json\n")[1:]]
         settings = json.loads(next(b for b in blocks if "JOBFILL_TIMING" in b))
         self.assertEqual(settings["env"], {"JOBFILL_TIMING": "1"})

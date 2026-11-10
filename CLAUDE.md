@@ -57,7 +57,8 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   reading/filling, `adapters.py` per-ATS quirks, `runner.py` commands, `browser.py` shared window,
   `pages.py` which page the candidate is on). The candidate shares the window: jobfill never overwrites
   a value it did not type (state `typed`), follows them when they click Next, and pauses when they go
-  Back. Multi-page behavior is tested on `tests/fixtures/wizard_like.html`.
+  Back. Multi-page behavior is tested on `tests/fixtures/wizard_like.html`. One `apply fill` per page: `rerun` in
+  its result is true only to retry a failed field, and approved answers go in with `apply set` (`--file`).
 - Workable: `detect.py` `_workable` (posting links, short links, company pages; the public API for the posting
   and company name, 404 = removed) and the `Workable` adapter (cookie banner declined, Education / Experience
   through `Adapter.entries` one editor at a time with `data-jobfill-index`, react-datepicker typed key by key,
@@ -108,8 +109,8 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   `jobfill/report.py` turns it into `data/applications/app<ID>_*.md|json` and `app stats`.
   `app giveup` marks one a robot cannot fill (status `manual`, `giveup_why`, `giveup_reason`); that is for users, with or
   without timing.
-- Time: `jobfill/timing.py`, a development tool, off unless `JOBFILL_TIMING` is set (README, "Measuring time"; no
-  tracked hooks and nothing in the agent workflows, users do not pay for it). It uses the standard library only, since
+- Time: `jobfill/timing.py`, a development tool, off unless `JOBFILL_TIMING` is set (`jobfill/README.md`,
+  "Measuring time"; no tracked hooks and nothing in the agent workflows, users do not pay for it). It uses the standard library only, since
   `pause` and `resume` run on every turn. `cli.main` writes a `timing` row per command in `timing.LOGGED`; code under
   `jobfill/` only calls `phase` around slow steps and `note` for what a row should remember. The silence before a
   command is charged to that command's application (adding up each application's own gaps would count a batch's minutes
@@ -125,6 +126,11 @@ must answer once, new questions to classify, and tier-3 answers that must be wri
   fills it; the agent only starts it.
 - Built-in catalog: `jobfill/catalog/` (`facts.py`, `records.py`, `choices.py`, `questions.py`).
   `python -m jobfill init` re-seeds it into existing databases without touching learned rows.
+- Docs: the main `README.md` stays short (what jobfill does, the steps, the commands a person runs). Details go
+  in the README of the folder they describe: `jobfill/README.md` (pipeline, field JSON, CLI, layout, timing),
+  `jobfill/catalog/README.md` (tiers, rules, written answers, learning), `jobfill/apply/README.md` (systems,
+  shared window, accounts, result record), `jobfill/portal/README.md`, `examples/README.md`,
+  `documents/README.md`. A new feature adds at most a line to the main README.
 - Adding a built-in question: add it to `questions.py` (tier 3: give it a `playbook` from
   `catalog/playbooks.py`), add a real-world label to `CASES` in `tests/test_matcher.py`, run the tests
   (they also reject alias collisions between questions). Draft checks live in `jobfill/writing.py`.

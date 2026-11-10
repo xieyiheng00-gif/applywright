@@ -61,7 +61,7 @@ it the same way and replace the upload with `apply set --field <resume field> --
      jobfill left it empty instead of picking a look-alike. Do not choose for
      the candidate. In the same numbered message, show their stored answer and the `choices` (the closest
      options) and say they can either pick it in the window themselves, or tell you. If they pick it in
-     the window, just run `apply fill` again. If they tell you, enter their exact choice with the
+     the window, run `apply fill` once to record it. If they tell you, enter their exact choice with the
      `set_with` command. Either way jobfill remembers that pick for that answer and uses it on later
      forms that offer it (`python -m jobfill choice list` shows them, `choice forget` drops one).
    - `needs_ai` - write each answer from its task, its playbook and the shared `ai_context` exactly as
@@ -77,8 +77,8 @@ it the same way and replace the upload with `apply set --field <resume field> --
      written like any other (optional or not: a blank essay on an application reads as no interest), and
      you also classify its label with the `/learn` rules (`python -m jobfill pending` has its id) so plain
      Python recognizes it next time.
-   - `fill_failed` - failed once. The next `apply fill` tries it once more by itself (often a dropdown
-     that loaded slowly); nothing to do yet.
+   - `fill_failed` - failed once, often a dropdown that loaded slowly. The result says `rerun: true`: run
+     `apply fill` once more; it retries these fields.
    - `handoff` - failed twice with the same value, so plain Python stops trying it (retrying a
      deterministic failure only wastes runs). You decide, using `value`, `options` and `why`:
      - the value is right but phrased differently from the options: pick the matching option and enter
@@ -89,10 +89,13 @@ it the same way and replace the upload with `apply set --field <resume field> --
      - the widget is one jobfill cannot operate (`apply set` fails too): ask the candidate to set it in
        the window.
      A field whose value changes (a corrected fact, a new answer) gets two fresh tries.
-2. Run `python -m jobfill apply fill --app <ID>` again. Stored facts and recorded answers now fill
-   the remaining fields; values already in the form are kept (`--overwrite` re-types only values
-   jobfill typed itself, e.g. after a corrected fact). One-off questions not worth learning:
-   `apply set` with the answer.
+2. **One fill per page.** Run `apply fill` again on the same page only when the result says `rerun: true`,
+   after a blocker is cleared, after the candidate worked in the window, or after a corrected fact
+   (`--overwrite` re-types only values jobfill typed itself). Never rerun just because fields are still
+   empty or answers are waiting for the candidate. Type each answer straight into its own field instead:
+   a recorded written answer the candidate approved with its `set_with` command (`apply set --field <field>
+   --file data/answers/app<ID>_<question_id>.txt`), and a `needs_user` answer, once stored, with
+   `apply set --field <field> --value "<answer>"`.
 3. Multi-page forms (iCIMS, Workday): when a page is done, `python -m jobfill apply next --app <ID>`
    clicks Next / Save and Continue (it never clicks a final submit), then `apply fill` again for the new
    page. Workday's search-and-pick menus ("How Did You Hear About Us?", also two-level ones such as
@@ -167,7 +170,7 @@ Plain Python still answers the questions; you drive the page.
 2. For each form page:
    - Read only the controls: `read_page` with `filter: "interactive"`. Avoid screenshots unless the
      page is unreadable.
-   - Write `data/forms/app<ID>_p<N>.json` in the field JSON format from `README.md` (label, type,
+   - Write `data/forms/app<ID>_p<N>.json` in the field JSON format from `jobfill/README.md` (label, type,
      options, required, `section`/`index` for repeated education/experience blocks, max length).
      Use the field's `ref` as its `id`.
    - `python -m jobfill resolve data/forms/app<ID>_p<N>.json --app <ID> --compact`, then handle
