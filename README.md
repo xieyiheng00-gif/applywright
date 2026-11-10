@@ -8,8 +8,8 @@ only the open questions, such as "Why do you want to work here?".
 
 - **Keeps your answers in one place.** Name, contact details, work authorization, education,
   experience, skills and the rest are stored once, in a database on your own computer.
-- **Fills the form in a browser window you can watch.** Greenhouse, Lever, iCIMS, Ashby, Workday and
-  Workable forms are filled by plain Python, page by page. The agent fills other company portals.
+- **Fills the form in a browser window you can watch.** Greenhouse, Lever, iCIMS, Ashby, Workday,
+  Workable and SmartRecruiters forms are filled by plain Python, page by page. The agent fills other company portals.
 - **Writes the open questions for each job.** "Why us?", "Tell us about yourself" and "Tell us about
   a time..." are written from your stored experience and the job posting, not recycled from an
   answer given to another company.

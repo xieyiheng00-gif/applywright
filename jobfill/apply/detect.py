@@ -1,11 +1,12 @@
 """Decide which application system a job URL uses, without AI.
 
-Order: URL rules (no network), then the page HTML (embedded Greenhouse/Lever/iCIMS/Ashby/Workable forms,
-schema.org JobPosting markup). Only when both are inconclusive does the agent look at the
-page itself (``handler == "agent_check"``).
+Order: URL rules (no network), then the page HTML (embedded Greenhouse/Lever/iCIMS/Ashby/Workable/SmartRecruiters
+forms, schema.org JobPosting markup). Only when both are inconclusive does the agent look at the page itself
+(``handler == "agent_check"``).
 
 handler   meaning
-python    Greenhouse / Lever / iCIMS / Ashby / Workday / Workable: jobfill's Playwright filler does the work
+python    Greenhouse / Lever / iCIMS / Ashby / Workday / Workable / SmartRecruiters: jobfill's Playwright filler
+          does the work
 ai        company portal or other ATS: the agent fills it in the built-in browser
 follow    job board listing (LinkedIn, Indeed...): find the employer's apply link first
 unsupported  known but not handled yet
@@ -27,11 +28,10 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like
       "Chrome/126.0 Safari/537.36")
 UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
-PYTHON_ATS = {"greenhouse", "lever", "icims", "ashby", "workday", "workable"}
+PYTHON_ATS = {"greenhouse", "lever", "icims", "ashby", "workday", "workable", "smartrecruiters"}
 
 # Other ATS products: recognised, filled by the agent in the browser.
 OTHER_ATS = {
-    "smartrecruiters": r"(^|\.)smartrecruiters\.com$",
     "jobvite": r"(^|\.)jobvite\.com$", "taleo": r"(^|\.)taleo\.net$",
     "successfactors": r"(successfactors\.(com|eu)|sapsf\.(com|eu))$", "bamboohr": r"(^|\.)bamboohr\.com$",
     "recruitee": r"(^|\.)recruitee\.com$",
@@ -293,6 +293,75 @@ def _workable(d: Detection, u, network: bool) -> Detection:
     return d
 
 
+# SmartRecruiters: a posting is jobs.smartrecruiters.com/<company>/<posting id>[-<slug>]; its form ("I'm interested")
+# is /oneclick-ui/company/<company>/publication/<posting uuid>. The public API answers for either id
+# (api.smartrecruiters.com/v1/companies/<company>/postings/<id or uuid>, 404 once removed, "active": false once
+# closed) with the company's name, the location and the job ad.
+SR_POSTING = re.compile(r"^/(?P<company>[\w.%-]+)/(?P<id>\d{6,})(?:-[^/]*)?/?$")
+SR_FORM = re.compile(rf"^/(?:oneclick-ui|external-referrals)/company/(?P<company>[\w.%-]+)/publication/(?P<uuid>{UUID})", re.I)
+SR_LINK = re.compile(r"https?://(?:jobs|careers)\.smartrecruiters\.com/(?P<company>[\w.%-]+)/(?P<id>\d{6,})(?:-[\w%-]*)?")
+SR_WIDGET = re.compile(r"smartrecruiters\.com/(?:widget|job-widget)|class=\"[^\"]*\bsmartrecruiters-widget|"
+                       r"api\.smartrecruiters\.com/v1/companies/[\w.%-]+/postings\b")
+SR_SITE = {"www", "smartrecruiters.com", "help", "developers", "api", "static", "c", "status"}
+SR_BOARD = ("a SmartRecruiters job list, not a single job. Open the job and pass its link "
+            "(jobs.smartrecruiters.com/<company>/<id>).")
+
+
+def _sr_form_url(company: str, uuid: str) -> str:
+    return f"https://jobs.smartrecruiters.com/oneclick-ui/company/{company}/publication/{uuid}?dcr_ci={company}"
+
+
+def _sr_location(loc: dict) -> str | None:
+    place = loc.get("fullLocation") or ", ".join(p for p in (loc.get("city"), loc.get("region"),
+                                                              (loc.get("country") or "").upper()) if p)
+    work = "Remote" if loc.get("remote") else "Hybrid" if loc.get("hybrid") else ""
+    return f"{place} ({work})" if place and work else (place or work or None)
+
+
+def _smartrecruiters(d: Detection, u, network: bool) -> Detection:
+    host = u.netloc.lower().split(":")[0]
+    if host.split(".")[0] in SR_SITE or host == "smartrecruiters.com":
+        d.ats = "smartrecruiters"
+        return _not_job(d, "SmartRecruiters' own site, not a job posting.")
+    form, posting = SR_FORM.match(u.path), SR_POSTING.match(u.path)
+    if not form and not posting:
+        d.ats = "smartrecruiters"
+        return _not_job(d, f"This is {SR_BOARD}")
+    company = (form or posting).group("company")
+    key = form.group("uuid").lower() if form else posting.group("id")
+    d.kind, d.ats, d.handler = "job", "smartrecruiters", "python"
+    # Without the API the form is reached from the posting's "I'm interested" button (the adapter clicks it).
+    d.apply_url = _sr_form_url(company, key) if form else f"https://jobs.smartrecruiters.com/{company}/{key}"
+    d.company = company if re.search(r"[A-Z]", company) else _titleize(company)   # "AbbVie" is already its name
+    d.extra = {"company_id": company, ("uuid" if form else "posting_id"): key}
+    if network:
+        try:
+            job = fetch_json(f"https://api.smartrecruiters.com/v1/companies/{company}/postings/{key}")
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return _not_job(d, "SmartRecruiters says this job does not exist any more (removed or closed).")
+            d.extra["api_error"] = str(e)[:200]
+            return d
+        except Exception as e:   # the form itself may still load
+            d.extra["api_error"] = str(e)[:200]
+            return d
+        if job.get("active") is False:
+            return _not_job(d, "SmartRecruiters says this job is closed (no longer active).")
+        org = job.get("company") or {}
+        company = org.get("identifier") or company
+        d.company = org.get("name") or d.company
+        d.role = job.get("name")
+        d.location = _sr_location(job.get("location") or {})
+        sections = ((job.get("jobAd") or {}).get("sections") or {})
+        d.posting = "\n\n".join(f"{s.get('title', '')}\n{_strip_html(s['text'])}".strip()
+                                for s in sections.values() if isinstance(s, dict) and s.get("text")) or None
+        d.extra.update(company_id=company, posting_id=str(job.get("id") or d.extra.get("posting_id") or ""),
+                       uuid=job.get("uuid") or d.extra.get("uuid"))
+        if d.extra["uuid"]:
+            d.apply_url = _sr_form_url(company, d.extra["uuid"])
+    return d
+
+
 def _icims(d: Detection, u) -> Detection:
     m = re.match(r"^(/jobs/(\d+)(?:/[^/?#]+)?)", u.path)
     if not m or m.group(1).rstrip("/").endswith(("/search", "/intro")):
@@ -359,6 +428,11 @@ def _from_html(d: Detection, html: str, network: bool) -> Detection:
     if len(workable_jobs) == 1:
         return _workable(d, urlparse(next(iter(workable_jobs.values()))), network)
     workable_list = bool(workable_jobs) or bool(WORKABLE_EMBED.search(html))
+    # Likewise a SmartRecruiters posting linked from the company's page; several make it a job list.
+    sr_jobs = {m.group("id"): m.group(0) for m in SR_LINK.finditer(html)}
+    if len(sr_jobs) == 1:
+        return _smartrecruiters(d, urlparse(next(iter(sr_jobs.values()))), network)
+    sr_list = bool(sr_jobs) or bool(SR_WIDGET.search(html))
     m = re.search(r"https?://[\w.-]+\.icims\.com/jobs/\d+[^\"'<> ]*", html)
     if m:
         return _icims(d, urlparse(htmllib.unescape(m.group(0))))
@@ -382,6 +456,8 @@ def _from_html(d: Detection, html: str, network: bool) -> Detection:
         # Probably a JavaScript app shell; the HTML alone cannot tell.
         if workable_list:   # the company's Workable job list, drawn by Workable's widget
             return _not_job(d, f"The page shows {WORKABLE_BOARD}")
+        if sr_list:
+            return _not_job(d, f"The page shows {SR_BOARD}")
         if d.ats and JOB_PATH.search(d.url):
             d.kind, d.handler = "job", "ai"
             return d
@@ -400,6 +476,8 @@ def _from_html(d: Detection, html: str, network: bool) -> Detection:
         return d
     if workable_list:
         return _not_job(d, f"The page shows {WORKABLE_BOARD}")
+    if sr_list:
+        return _not_job(d, f"The page shows {SR_BOARD}")
     return _not_job(d, "No job posting found on this page (no job description, no application form).")
 
 
@@ -449,6 +527,8 @@ def detect(url: str, *, network: bool = True, html: str | None = None) -> Detect
         return _icims(d, u)
     if host.endswith(".workable.com") and host.split(".")[0] not in WORKABLE_SITE:
         return _workable(d, u, network)
+    if host == "smartrecruiters.com" or host.endswith(".smartrecruiters.com"):
+        return _smartrecruiters(d, u, network)
     if re.search(r"(myworkdayjobs|myworkdaysite)\.com$|(^|\.)workday\.com$", host):
         if "/job/" in u.path or re.search(r"/details/", u.path):
             return _workday(d, u)

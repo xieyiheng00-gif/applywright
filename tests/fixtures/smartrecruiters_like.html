@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Easy apply - Associate Engineer - Acme Robotics</title>
+<!--
+  A SmartRecruiters application form ("oneclick-ui", jobs.smartrecruiters.com/oneclick-ui/company/<c>/publication/<uuid>),
+  for tests. Every field is a web component of SmartRecruiters' design system (spl-*) that draws its control and
+  label inside an open shadow root; the Angular parts around them (oc-*) are plain DOM with data-test hooks.
+
+  Page 1 mirrors the live form read on 2026-11-09 (AbbVie): spl-input (label attribute, <label for> and <input>
+  sharing the host's id inside its shadow root, through spl-internal-form-field's slots), the City
+  spl-autocomplete (role=combobox, at least 3 characters, suggestions only), spl-phone-field (spl-select country
+  code with spl-select-option[value][label] and a search box, then the number), spl-dropzone, "Easy Apply" import
+  pane, Experience / Education "Add", Your Profiles, Message to the Hiring Team, Next.
+  The entry editors, month pickers (flatpickr, typed Y-m-d) and page 2 (screening questions from
+  sr-screening-questions-form, consents, Submit, "Application submitted!") follow SmartRecruiters' public bundle
+  (oneclick-ui main.17e8de2e823c4996.js and its chunks, 2026-11): what they render, not seen live.
+
+  Flags (location.hash): posting (the posting page with "I'm interested"), captcha (DataDome), expired,
+  nosave (an entry editor's Save fails), mxphone (country code preselected as Mexico), noscreening (no page 2).
+-->
+<style>
+  body { font-family: sans-serif; margin: 20px; }
+  .form-section { border-bottom: 1px solid #ddd; padding: 10px 0; }
+  .entry { border: 1px solid #ccc; padding: 6px; margin: 4px 0; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const flags = new Set(location.hash.replace(/^#/, "").split("&").filter(Boolean));
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+let counter = 20;
+const nextId = (p = "spl-form-element_") => p + (++counter);
+const fire = (el, name, detail) => el.dispatchEvent(new CustomEvent(name, {bubbles: true, composed: true, detail}));
+
+// ---- the form field frame every spl field draws: label slot, body, error line
+customElements.define("spl-internal-form-field", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    this.attachShadow({mode: "open"}).innerHTML =
+      '<div class="c-spl-form-field"><slot name="label"></slot><slot name="description"></slot><slot class="c-spl-form-field-slot"></slot>' +
+      '<p class="c-spl-form-field-error"></p></div>';
+  }
+  set error(text) { this.shadowRoot.querySelector(".c-spl-form-field-error").textContent = text || ""; }
+});
+const labelHtml = (id, text, required, slotted) =>
+  `<label slot="label" class="c-spl-form-field-label" for="${id}" id="${id}-label"><span class="c-spl-form-field-label-wrapper">` +
+  `<span class="c-spl-form-field-label-required-group">${slotted ? '<slot name="label-content"></slot>' : ""}${esc(text)}` +
+  (required ? '<span class="c-spl-form-field-required-mark" aria-hidden="true">*</span>' : "") + "</span></span></label>";
+
+// ---- spl-input / spl-textarea
+class SplInput extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const id = this.id || (this.id = nextId());
+    const req = this.hasAttribute("required");
+    const multi = this.tagName === "SPL-TEXTAREA";
+    const aria = this.getAttribute("aria-label") ? ` aria-label="${esc(this.getAttribute("aria-label"))}"` : "";
+    const combo = this.hasAttribute("combobox")
+      ? ` role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${esc(this.getAttribute("combobox"))}"` : "";
+    const control = multi
+      ? `<textarea rows="4" class="c-spl-textarea" id="${id}" aria-required="${req}"></textarea>`
+      : `<input class="c-spl-input" id="${id}" type="${esc(this.getAttribute("type") || "text")}" autocomplete="off" aria-required="${req}"${aria}${combo}>`;
+    const label = this.getAttribute("label") || "";
+    this.attachShadow({mode: "open"}).innerHTML = "<spl-internal-form-field>" +
+      (label || this.querySelector("[slot=label-content]") ? labelHtml(id, label, req, true) : "") +
+      `<div class="c-spl-input-grid"><div class="c-spl-input-wrapper">${control}</div></div></spl-internal-form-field>`;
+    this.control = this.shadowRoot.getElementById(id);
+    this.control.addEventListener("input", () => fire(this, "spl-input", this.control.value));
+    this.control.addEventListener("change", () => fire(this, "spl-change", this.control.value));
+  }
+  get value() { return this.control ? this.control.value : ""; }
+  set value(v) { this.control.value = v; }
+  set error(t) { this.shadowRoot.querySelector("spl-internal-form-field").error = t; }
+}
+customElements.define("spl-input", SplInput);
+customElements.define("spl-textarea", class extends SplInput {});
+
+// ---- spl-dropdown-item: an option, drawn as role=option in its shadow root
+customElements.define("spl-dropdown-item", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    this.attachShadow({mode: "open"}).innerHTML =
+      '<div class="c-spl-dropdown-item" role="option" aria-selected="false" aria-disabled="false"><slot></slot></div>';
+  }
+});
+
+// ---- spl-autocomplete: the City search (suggestions only) and lists with custom values (title, company, school)
+const PLACES = ["Madison, WI, United States", "Madison, AL, United States", "Madison, MS, United States",
+  "Madison Heights, MI, United States", "Chicago, IL, United States", "Chicago Heights, IL, United States",
+  "North Chicago, IL, United States", "Mexico City, CDMX, Mexico", "Madrid, Madrid, Spain"];
+const SUGGEST = {
+  places: PLACES,
+  titles: ["Data Engineer", "Data Engineering Intern", "Software Engineer"],
+  companies: ["Example Analytics", "Example Corp"],
+  schools: ["University of Wisconsin-Madison", "University of Wisconsin-Milwaukee"],
+};
+customElements.define("spl-autocomplete", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const id = this.id || (this.id = nextId());
+    this.menuId = "menu-" + id;
+    this.picked = "";
+    const label = this.getAttribute("label") || "";
+    const slotted = this.querySelector("[slot=label-content]") ? '<slot name="label-content" slot="label-content"></slot>' : "";
+    this.attachShadow({mode: "open"}).innerHTML =
+      `<div><spl-input id="${id}" combobox="${this.menuId}" ${label ? `label="${esc(label)}"` : ""} ${this.hasAttribute("required") ? "required" : ""}>${slotted}</spl-input>` +
+      `<div slot="menu" id="${this.menuId}" role="listbox" class="c-spl-dropdown-menu" style="display:none"></div></div>`;
+    this.field = this.shadowRoot.querySelector("spl-input");
+    this.menu = this.shadowRoot.getElementById(this.menuId);
+    customElements.upgrade(this.field);
+    this.field.connectedCallback();
+    const input = this.field.control;
+    this.input = input;
+    input.addEventListener("focus", () => this.search());
+    input.addEventListener("click", () => this.search());
+    input.addEventListener("input", () => { this.picked = ""; clearTimeout(this.t); this.t = setTimeout(() => this.search(), 250); });
+    input.addEventListener("keydown", (e) => { if (e.key === "Escape") this.close(); if (e.key === "Enter" && this.custom()) { this.keep(); } });
+    input.addEventListener("blur", () => setTimeout(() => this.leave(), 120));
+  }
+  custom() { return this.hasAttribute("allow-custom-values"); }
+  options() {
+    const own = this.getAttribute("options");
+    return own ? JSON.parse(own) : SUGGEST[this.getAttribute("source")] || [];
+  }
+  search() {
+    const q = this.input.value.trim().toLowerCase();
+    const min = parseInt(this.getAttribute("min-query-length") || "0", 10);
+    if (q.length < min) return this.close();
+    const hits = this.options().filter((o) => !q || this.picked || o.toLowerCase().includes(q));
+    this.menu.innerHTML = "";
+    for (const text of hits) {
+      const item = document.createElement("spl-dropdown-item");
+      item.textContent = text;
+      item.addEventListener("mousedown", (e) => { e.preventDefault(); this.pick(text); });
+      this.menu.appendChild(item);
+    }
+    this.menu.style.display = hits.length ? "block" : "none";
+    input_expanded(this.input, hits.length > 0);
+  }
+  pick(text) {
+    this.picked = text;
+    this.input.value = text;
+    this.setAttribute("value", text);
+    this.close();
+    fire(this, "spl-change", text);
+  }
+  keep() { this.picked = this.input.value; this.setAttribute("value", this.input.value); this.close(); }
+  close() { this.menu.style.display = "none"; input_expanded(this.input, false); }
+  leave() {
+    if (this.input === this.shadowRoot.activeElement || this.input.matches(":focus")) return;
+    this.close();
+    if (this.custom()) { this.keep(); return; }
+    if (this.input.value !== this.picked) { this.input.value = ""; this.removeAttribute("value"); this.picked = ""; }
+  }
+  get value() { return this.getAttribute("value") || ""; }
+  set error(t) { this.field.error = t; }
+});
+const input_expanded = (input, open) => input.setAttribute("aria-expanded", open ? "true" : "false");
+
+// ---- spl-select (the phone's country code), spl-select-option, spl-dropdown-search
+customElements.define("spl-select-option", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    this.attachShadow({mode: "open"}).innerHTML = "<spl-dropdown-item><slot></slot></spl-dropdown-item>";
+  }
+});
+customElements.define("spl-dropdown-search", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    this.attachShadow({mode: "open"}).innerHTML =
+      '<div class="c-spl-dropdown-search"><input autocomplete="off" class="c-spl-dropdown-search__input" type="text" ' +
+      'placeholder="Search by country/region or code" aria-label="Search by country/region or code" role="combobox"></div>';
+    this.shadowRoot.querySelector("input").addEventListener("input", (e) => fire(this, "spl-search", e.target.value));
+  }
+});
+customElements.define("spl-select", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const id = this.id || (this.id = nextId());
+    this.attachShadow({mode: "open"}).innerHTML = "<spl-internal-form-field>" +
+      `<button class="c-spl-select-field" type="button" role="combobox" aria-haspopup="listbox" aria-autocomplete="none" ` +
+      `aria-label="${esc(this.getAttribute("splarialabel") || "")}" id="${id}" aria-expanded="false" aria-controls="${id}-menu">` +
+      '<span class="c-spl-select-content"></span></button>' +
+      `<div id="${id}-menu" role="listbox" class="c-spl-dropdown-menu" style="display:none;max-height:120px;overflow:auto">` +
+      '<slot name="search"></slot><slot></slot></div></spl-internal-form-field>';
+    this.button = this.shadowRoot.getElementById(id);
+    this.menu = this.shadowRoot.getElementById(id + "-menu");
+    this.button.addEventListener("click", () => this.toggle());
+    this.addEventListener("spl-search", (e) => {
+      const q = e.detail.trim().toLowerCase();
+      for (const o of this.querySelectorAll("spl-select-option")) {
+        o.style.display = !q || o.textContent.toLowerCase().includes(q) ? "" : "none";
+      }
+    });
+    for (const o of this.querySelectorAll("spl-select-option")) {
+      o.addEventListener("click", () => { this.setAttribute("value", o.getAttribute("value")); this.show(); this.toggle(false); fire(this, "spl-change", o.getAttribute("value")); });
+    }
+    this.show();
+  }
+  toggle(open = this.menu.style.display === "none") {
+    this.menu.style.display = open ? "block" : "none";
+    this.button.setAttribute("aria-expanded", String(open));
+  }
+  show() {
+    const o = this.querySelector(`spl-select-option[value="${this.getAttribute("value")}"]`);
+    this.shadowRoot.querySelector(".c-spl-select-content").textContent = o ? o.querySelector(".c-spl-phone-field-select-option-container-code").textContent : "";
+  }
+});
+const COUNTRIES = [["US", "United States", "1"], ["CA", "Canada", "1"], ["PR", "Puerto Rico", "1"], ["MX", "Mexico", "52"],
+  ["ES", "Spain", "34"], ["GB", "United Kingdom", "44"], ["IN", "India", "91"], ["DE", "Germany", "49"]];
+customElements.define("spl-phone-field", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const id = this.id || (this.id = nextId());
+    const options = COUNTRIES.map(([iso, name, code]) =>
+      `<spl-select-option class="c-spl-phone-field-select-option" value="${iso}" label="${name}">` +
+      `<div class="c-spl-phone-field-select-option-container"><span class="c-spl-phone-field-select-option-container-country">${name}</span>` +
+      `<span class="c-spl-phone-field-select-option-container-code">+${code}</span></div></spl-select-option>`).join("");
+    this.attachShadow({mode: "open"}).innerHTML = '<div class="c-spl-phone-field"><spl-internal-form-field>' +
+      labelHtml(id, this.getAttribute("label") || "", this.hasAttribute("required"), false) +
+      `<div class="c-spl-phone-field-content" role="group" aria-labelledby="${id}-label">` +
+      `<spl-select class="c-spl-phone-field-select" id="${nextId()}" value="${flags.has("mxphone") ? "MX" : "US"}" splarialabel="Country code">` +
+      `<spl-dropdown-search slot="search"></spl-dropdown-search>${options}</spl-select>` +
+      `<spl-input id="${id}" type="tel" aria-label="Phone number"></spl-input></div></spl-internal-form-field></div>`;
+  }
+  get country() { return this.shadowRoot.querySelector("spl-select").getAttribute("value"); }
+  get number() { return this.shadowRoot.querySelector("spl-input").value; }
+});
+
+// ---- spl-dropzone: the resume (and the "Easy Apply" import pane)
+customElements.define("spl-dropzone", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const id = nextId("spl-dropzone-file-input-");
+    this.attachShadow({mode: "open"}).innerHTML =
+      `<div class="c-spl-dropzone-wrapper c-spl-dropzone"><label for="${id}"><span class="c-spl-dropzone-label c-spl-dropzone-label-browse">Choose a file</span>` +
+      `<span class="c-spl-dropzone-label">or drop it here</span></label><input type="file" id="${id}" accept=".pdf,.doc,.docx">` +
+      '<span class="c-spl-dropzone-label c-spl-dropzone-label-restriction">10MB size limit</span><ul class="c-spl-file-list"></ul></div>';
+    const input = this.shadowRoot.getElementById(id);
+    input.addEventListener("change", () => {
+      const name = input.files[0] && input.files[0].name;
+      if (!name) return;
+      this.files = [name];
+      this.shadowRoot.querySelector(".c-spl-file-list").innerHTML = `<li class="c-spl-file-item"><span>${esc(name)}</span><button type="button">Remove</button></li>`;
+      input.value = "";   // taken: the list shows it, the input is empty again
+      fire(this, "spl-change", name);
+    });
+  }
+});
+
+// ---- spl-date-field type=month-year (flatpickr, allowInput: typed Y-m-d, read on Enter or when leaving)
+customElements.define("spl-date-picker", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    this.attachShadow({mode: "open"}).innerHTML =
+      `<div class="c-spl-input-wrapper"><input class="c-spl-date-picker-input c-spl-input" data-input placeholder="${esc(this.getAttribute("placeholder") || "")}" ` +
+      'aria-haspopup="grid" aria-label="Use the arrow keys to pick a month, or type the date"></div>' +
+      '<div class="flatpickr-calendar" style="display:none">January February March April May June July August September October November December</div>';
+    const input = this.shadowRoot.querySelector("input");
+    const calendar = this.shadowRoot.querySelector(".flatpickr-calendar");
+    input.addEventListener("click", () => { calendar.style.display = "block"; });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { this.read(); calendar.style.display = "none"; }
+      if (e.key === "Escape") calendar.style.display = "none";
+    });
+    input.addEventListener("blur", () => { this.read(); calendar.style.display = "none"; });
+    this.input = input;
+  }
+  read() {
+    const m = this.input.value.trim().match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
+    const host = this.getRootNode().host;
+    if (!m || +m[2] < 1 || +m[2] > 12) { if (this.input.value) this.input.value = ""; host.removeAttribute("value"); return; }
+    const v = `${m[1]}-${m[2]}-01`;
+    this.input.value = v;
+    host.setAttribute("value", v);
+    fire(host, "spl-change", v);
+  }
+});
+customElements.define("spl-date-field", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const id = this.id || (this.id = nextId());
+    this.attachShadow({mode: "open"}).innerHTML = "<spl-internal-form-field>" +
+      labelHtml(id, this.getAttribute("label") || "", this.hasAttribute("required"), false) +
+      `<spl-date-picker placeholder="${esc(this.getAttribute("placeholder") || "")}"></spl-date-picker></spl-internal-form-field>`;
+  }
+  get value() { return this.getAttribute("value") || ""; }
+});
+
+// ---- spl-checkbox, spl-radio-group / spl-radio (only the chosen radio carries the question's name)
+customElements.define("spl-checkbox", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const id = nextId("spl-checkbox-");
+    const req = this.hasAttribute("required");
+    this.attachShadow({mode: "open"}).innerHTML =
+      `<div class="c-spl-checkbox"><input type="checkbox" class="c-spl-checkbox-input" id="${id}" aria-required="${req}">` +
+      `<label for="${id}" class="c-spl-checkbox-label"><slot name="label-content"></slot>${esc(this.getAttribute("label") || "")}` +
+      `${req ? '<span aria-hidden="true">*</span>' : ""}</label></div>`;
+    this.box = this.shadowRoot.getElementById(id);
+    this.box.addEventListener("change", () => { this.toggleAttribute("checked", this.box.checked); fire(this, "spl-change", this.box.checked); });
+  }
+  get checked() { return this.box ? this.box.checked : false; }
+});
+customElements.define("spl-radio", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const id = nextId("spl-radio-");
+    this.attachShadow({mode: "open"}).innerHTML =
+      `<span class="c-spl-radio"><input type="radio" id="${id}" value="${esc(this.getAttribute("value"))}">` +
+      `<label for="${id}">${esc(this.getAttribute("label"))}</label></span>`;
+    this.radio = this.shadowRoot.getElementById(id);
+    this.radio.addEventListener("change", () => fire(this, "spl-radio-picked", this.getAttribute("value")));
+  }
+});
+customElements.define("spl-radio-group", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const id = this.id || (this.id = nextId());
+    const req = this.hasAttribute("required");
+    this.attachShadow({mode: "open"}).innerHTML = "<spl-internal-form-field>" +
+      `<label slot="label" id="${id}-label" class="c-spl-form-field-label"><slot name="label-content"></slot>${req ? '<span aria-hidden="true">*</span>' : ""}</label>` +
+      `<fieldset class="c-spl-radio-group c-spl-radio-group--vertical" aria-labelledby="${id}-label" role="radiogroup" aria-required="${req}">` +
+      "<slot></slot></fieldset></spl-internal-form-field>";
+    this.addEventListener("spl-radio-picked", (e) => {
+      this.value = e.detail;
+      for (const r of this.querySelectorAll("spl-radio")) {
+        const on = r.getAttribute("value") === this.value;
+        r.radio.checked = on;
+        if (on) r.radio.setAttribute("name", this.getAttribute("name")); else r.radio.removeAttribute("name");
+      }
+    });
+  }
+});
+
+// ---- spl-button: a <button> in its shadow root, the text slotted
+customElements.define("spl-button", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const aria = this.getAttribute("aria-label") ? ` aria-label="${esc(this.getAttribute("aria-label"))}"` : "";
+    this.attachShadow({mode: "open"}).innerHTML =
+      `<button class="c-spl-button c-spl-button--${esc(this.getAttribute("type") || "secondary")}" type="button"${aria}>` +
+      '<div class="c-spl-button__content"><slot></slot></div></button>';
+  }
+});
+
+// ---- the screening questions: sr-question-field-* (each its own shadow root) inside sr-screening-questions-form
+const QUESTIONS = [
+  {id: "q_auth", type: "radio", required: true, label: "Are you legally authorized to work in the United States?", values: ["Yes", "No"]},
+  {id: "q_sponsor", type: "radio", required: true, label: "Will you now or in the future require sponsorship for employment visa status (e.g., H-1B visa status)?", values: ["Yes", "No"]},
+  {id: "q_heard", type: "select", required: true, label: "How did you hear about this job?", values: ["LinkedIn", "Indeed", "Company Website", "Referral", "Other"]},
+  {id: "q_why", type: "textarea", required: false, label: "Why do you want to work at Acme Robotics?"},
+  {id: "q_certify", type: "checkbox", required: true, label: "I certify that the information I have provided is true and accurate."},
+];
+customElements.define("sr-screening-questions-form", class extends HTMLElement {
+  connectedCallback() {
+    if (this.shadowRoot) return;
+    const root = this.attachShadow({mode: "open"});
+    root.innerHTML = QUESTIONS.map((q) => `<sr-question-field-${q.type} data-q="${q.id}"></sr-question-field-${q.type}>`).join("");
+    for (const el of root.querySelectorAll("[data-q]")) {
+      const q = QUESTIONS.find((x) => x.id === el.getAttribute("data-q"));
+      const label = `<span slot="label-content">${esc(q.label)}</span>`;
+      const req = q.required ? "required" : "";
+      const inner = {
+        radio: `<spl-radio-group name="${q.id}" ${req}>${label}${(q.values || []).map((v) => `<spl-radio value="${esc(v)}" label="${esc(v)}"></spl-radio>`).join("")}</spl-radio-group>`,
+        select: `<spl-autocomplete id="${q.id}" name="${q.id}" ${req} options='${esc(JSON.stringify(q.values))}' aria-label="Select ${esc(q.label)}">${label}</spl-autocomplete>`,
+        textarea: `<spl-textarea id="${q.id}" name="${q.id}" ${req}>${label}</spl-textarea>`,
+        checkbox: `<spl-checkbox name="${q.id}" ${req}>${label}</spl-checkbox>`,
+      }[q.type];
+      el.attachShadow({mode: "open"}).innerHTML = inner;
+    }
+  }
+  answers() {
+    const out = {};
+    for (const el of this.shadowRoot.querySelectorAll("[data-q]")) {
+      const q = QUESTIONS.find((x) => x.id === el.getAttribute("data-q"));
+      const f = el.shadowRoot.firstElementChild;
+      out[q.id] = q.type === "radio" ? (f.value || "") : q.type === "checkbox" ? f.checked : q.type === "select" ? f.value : f.value;
+    }
+    return out;
+  }
+});
+
+// ---- the application (Angular parts: plain DOM with data-test hooks)
+const app = document.getElementById("app");
+window.submitted = false;
+window.autofillUsed = false;
+
+function posting() {
+  app.innerHTML = '<div class="job-sections"><h1>Associate Engineer</h1><p>Acme Robotics, Madison, WI</p>' +
+    "<h2>Job Description</h2><p>Build robots that sort parcels.</p>" +
+    '<a class="button button--primary js-oneclick" id="st-apply" href="#">I\'m interested</a></div>';
+  app.querySelector("#st-apply").addEventListener("click", (e) => { e.preventDefault(); form(); });
+}
+
+const sectionHtml = (kind, title) =>
+  `<oc-${kind}><div data-test="${kind}" class="form-section"><div class="spl-flex"><h3>${title}</h3>` +
+  `<oc-button type="secondary" data-test="add-${kind}"><spl-button aria-label="Add ${kind} entry" type="secondary">Add</spl-button></oc-button></div>` +
+  `<oc-validation-summary><ul data-test="validation-summary" class="validation-summary"></ul></oc-validation-summary><div class="entries"></div></div></oc-${kind}>`;
+
+function form() {
+  app.innerHTML = '<oc-oneclick-form-root><oc-oneclick-form><form novalidate>' +
+    '<oc-easy-apply><div data-test="easy-apply-container" class="form-section"><h3>Easy Apply</h3>' +
+    "<p>Choose an option to autocomplete your application. You can still fill your profile manually.</p>" +
+    '<div data-test="apply-with-resume-container"><spl-dropzone></spl-dropzone></div><button type="button" aria-label="Apply With Indeed">Apply With Indeed</button></div></oc-easy-apply>' +
+    '<oc-personal-information><div data-test="personal-information" class="form-section"><h3>Personal information</h3><p>Fields marked with * are required.</p>' +
+    '<div data-test="personal-info-first-name"><oc-input data-test="personal-info-first-name-input"><spl-input id="first-name-input" label="First name" required></spl-input></oc-input></div>' +
+    '<div data-test="personal-info-last-name"><oc-input data-test="personal-info-last-name-input"><spl-input id="last-name-input" label="Last name" required></spl-input></oc-input></div>' +
+    '<div data-test="personal-info-email"><oc-input data-test="personal-info-email-input"><spl-input id="email-input" type="email" label="Email" required></spl-input></oc-input></div>' +
+    '<div data-test="personal-info-email-confirm"><oc-input data-test="personal-info-email-confirm-input"><spl-input id="confirm-email-input" type="email" label="Confirm your email" required></spl-input></oc-input></div>' +
+    '<div data-test="personal-info-location"><oc-location-autocomplete-wrapper><oc-location-autocomplete>' +
+    '<spl-autocomplete min-query-length="3" data-test="location-autocomplete" source="places" label="City" required></spl-autocomplete></oc-location-autocomplete></oc-location-autocomplete-wrapper></div>' +
+    '<div data-test="personal-info-phone"><oc-phone-number><spl-phone-field id="spl-form-element_5" label="Phone number" required></spl-phone-field></oc-phone-number></div>' +
+    "</div></oc-personal-information>" +
+    sectionHtml("experience", "Experience") + sectionHtml("education", "Education") +
+    '<oc-web><div data-test="web" class="form-section"><h3>Your Profiles</h3>' +
+    '<oc-input data-test="web-profiles-linkedin"><spl-input id="linkedin-input" label="LinkedIn"></spl-input></oc-input>' +
+    '<oc-input data-test="web-profiles-facebook"><spl-input id="facebook-input" label="Facebook"></spl-input></oc-input>' +
+    '<oc-input data-test="web-profiles-twitter"><spl-input id="twitter-input" label="X (fka Twitter)"></spl-input></oc-input>' +
+    '<oc-input data-test="web-profiles-website"><spl-input id="website-input" label="Website"></spl-input></oc-input></div></oc-web>' +
+    '<oc-resume-upload><div data-test="resume-upload-container" class="form-section"><h3>Resume <span data-test="section-required-mark">*</span></h3>' +
+    '<spl-form-field><spl-dropzone data-test="resume-upload"></spl-dropzone></spl-form-field></div></oc-resume-upload>' +
+    '<oc-hiring-manager-message><div data-test="hiring-manager-message-container" class="form-section"><h3>Message to the Hiring Team</h3>' +
+    '<oc-textarea data-test="hiring-manager-message-text"><spl-textarea id="hiring-manager-message-input" label="Let the company know about your interest working there"></spl-textarea></oc-textarea></div></oc-hiring-manager-message>' +
+    "</form></oc-oneclick-form>" +
+    `<oc-nav-first-page><footer data-test="footer"><oc-button type="primary" data-test="${flags.has("noscreening") ? "footer-submit" : "footer-next"}">` +
+    `<spl-button type="primary">${flags.has("noscreening") ? "Submit" : "Next"}</spl-button></oc-button></footer></oc-nav-first-page></oc-oneclick-form-root>`;
+  app.querySelector("[data-test=apply-with-resume-container] spl-dropzone").addEventListener("spl-change", () => { window.autofillUsed = true; });
+  for (const kind of ["experience", "education"]) {
+    app.querySelector(`[data-test=add-${kind}]`).addEventListener("click", () => addEntry(kind));
+  }
+  const footer = app.querySelector("oc-nav-first-page oc-button");
+  footer.addEventListener("click", () => {
+    if (!checkFirstPage()) return;
+    window.firstPage = firstPageValues();
+    if (flags.has("noscreening")) { window.submitted = {first: window.firstPage}; success(); } else screening();
+  });
+}
+
+const ENTRY_FIELDS = {
+  experience: (k) =>
+    `<oc-job-title-autocomplete><spl-autocomplete data-test="job-title-autocomplete" id="exp-title-${k}" label="Title" required allow-custom-values min-query-length="3" source="titles"></spl-autocomplete></oc-job-title-autocomplete>` +
+    `<oc-company-autocomplete><spl-autocomplete data-test="company-autocomplete" id="exp-company-${k}" label="Company" allow-custom-values min-query-length="3" source="companies"></spl-autocomplete></oc-company-autocomplete>` +
+    `<oc-location-autocomplete-wrapper data-test="experience-form-location"><oc-location-autocomplete><spl-autocomplete min-query-length="3" data-test="location-autocomplete" source="places" label="Office location"></spl-autocomplete></oc-location-autocomplete></oc-location-autocomplete-wrapper>` +
+    `<oc-textarea data-test="experience-description"><spl-textarea id="exp-desc-${k}" label="Description"></spl-textarea></oc-textarea>` +
+    `<oc-datepicker data-test="experience-date-from"><spl-date-field id="exp-from-${k}" type="month-year" label="From" required placeholder="Pick a date"></spl-date-field></oc-datepicker>` +
+    `<oc-datepicker data-test="experience-date-to"><spl-date-field id="exp-to-${k}" type="month-year" label="To" required placeholder="Pick a date"></spl-date-field></oc-datepicker>` +
+    `<oc-checkbox data-test="experience-current"><spl-checkbox label="I currently work here"></spl-checkbox></oc-checkbox>`,
+  education: (k) =>
+    `<oc-institution-autocomplete><spl-autocomplete data-test="institution-autocomplete" id="edu-institution-${k}" label="Institution" required allow-custom-values min-query-length="3" source="schools"></spl-autocomplete></oc-institution-autocomplete>` +
+    `<oc-input data-test="education-major"><spl-input id="edu-major-${k}" label="Major"></spl-input></oc-input>` +
+    `<oc-input data-test="education-degree"><spl-input id="edu-degree-${k}" label="Degree"></spl-input></oc-input>` +
+    `<oc-location-autocomplete-wrapper data-test="education-form-location"><oc-location-autocomplete><spl-autocomplete min-query-length="3" data-test="location-autocomplete" source="places" label="School location"></spl-autocomplete></oc-location-autocomplete></oc-location-autocomplete-wrapper>` +
+    `<oc-textarea data-test="education-description"><spl-textarea id="edu-desc-${k}" label="Description"></spl-textarea></oc-textarea>` +
+    `<oc-datepicker data-test="education-date-from"><spl-date-field id="edu-from-${k}" type="month-year" label="From" required placeholder="Pick a date"></spl-date-field></oc-datepicker>` +
+    `<oc-datepicker data-test="education-date-to"><spl-date-field id="edu-to-${k}" type="month-year" label="To" placeholder="Pick a date"></spl-date-field></oc-datepicker>` +
+    `<oc-checkbox data-test="education-current"><spl-checkbox label="I currently attend"></spl-checkbox></oc-checkbox>`,
+};
+let entryCount = 0;
+function addEntry(kind) {
+  const list = app.querySelector(`[data-test=${kind}] .entries`);
+  const k = ++entryCount;
+  const entry = document.createElement(`oc-${kind}-entry`);
+  entry.innerHTML = `<div><oc-${kind}-edit-form><div data-test="${kind}-edit-form" class="${kind}-edit-form spl-flex flex-row">` +
+    `<div class="edit-form-panel"><p>Fields marked with * are required.</p>${ENTRY_FIELDS[kind](k)}` +
+    `<div class="spl-flex"><oc-button type="secondary" data-test="${kind}-cancel"><spl-button>Cancel</spl-button></oc-button>` +
+    `<oc-button type="primary" data-test="${kind}-save"><spl-button type="primary">Save</spl-button></oc-button></div></div></div></oc-${kind}-edit-form></div>`;
+  list.appendChild(entry);
+  entry.querySelector(`[data-test=${kind}-cancel]`).addEventListener("click", () => entry.remove());
+  entry.querySelector(`[data-test=${kind}-save]`).addEventListener("click", () => saveEntry(kind, entry));
+}
+function entryValues(kind, entry) {
+  const ac = (t) => { const e = entry.querySelector(`[data-test=${t}] spl-autocomplete, spl-autocomplete[data-test=${t}]`); return e ? e.value : ""; };
+  const date = (t) => entry.querySelector(`[data-test=${t}] spl-date-field`).value;
+  const text = (t) => entry.querySelector(`[data-test=${t}] spl-input, [data-test=${t}] spl-textarea`).value;
+  const current = entry.querySelector(`[data-test=${kind}-current] spl-checkbox`).checked;
+  const place = ac(`${kind}-form-location`) || (entry.querySelector(`[data-test=${kind}-form-location] spl-autocomplete`) || {}).value || "";
+  return kind === "experience"
+    ? {title: ac("job-title-autocomplete"), company: ac("company-autocomplete"), location: place, description: text("experience-description"),
+       from: date("experience-date-from"), to: date("experience-date-to"), current}
+    : {institution: ac("institution-autocomplete"), major: text("education-major"), degree: text("education-degree"), location: place,
+       description: text("education-description"), from: date("education-date-from"), to: date("education-date-to"), current};
+}
+function saveEntry(kind, entry) {
+  const v = entryValues(kind, entry);
+  const missing = kind === "experience"
+    ? [!v.title && "title", !v.from && "from", !v.to && !v.current && "to"].filter(Boolean)
+    : [!v.institution && "institution", !v.from && "from"].filter(Boolean);
+  const summary = app.querySelector(`[data-test=${kind}] [data-test=validation-summary]`);
+  if (missing.length) {
+    summary.innerHTML = missing.map((m) => `<li data-test="validation-summary-message">Please provide ${m}</li>`).join("");
+    return;
+  }
+  if (flags.has("nosave") && kind === "experience") {
+    summary.innerHTML = '<li data-test="validation-summary-message">Something went wrong. Please try again.</li>';
+    return;
+  }
+  summary.innerHTML = "";
+  const head = kind === "experience" ? v.title : v.institution;
+  const sub = kind === "experience" ? v.company : [v.degree, v.major].filter(Boolean).join(", ");
+  entry.innerHTML = `<div data-test="${kind}-entry" class="entry"><p data-test="${kind}-entry-${kind === "experience" ? "title" : "institution"}">${esc(head)}</p>` +
+    `<p data-test="${kind}-entry-${kind === "experience" ? "company" : "major"}">${esc(sub)}</p>` +
+    `<p data-test="${kind}-entry-date">${esc(v.from)} - ${esc(v.current ? "Present" : v.to)}</p>` +
+    `<p class="place">${esc(v.location)}</p></div>`;
+  entry.saved = v;
+}
+function firstPageValues() {
+  const get = (id) => document.getElementById(id).value;
+  const phone = app.querySelector("spl-phone-field");
+  const dz = app.querySelector("spl-dropzone[data-test=resume-upload]");
+  return {first: get("first-name-input"), last: get("last-name-input"), email: get("email-input"), confirm: get("confirm-email-input"),
+          city: app.querySelector("[data-test=personal-info-location] spl-autocomplete").value, country: phone.country, phone: phone.number,
+          linkedin: get("linkedin-input"), twitter: get("twitter-input"), website: get("website-input"), message: get("hiring-manager-message-input"),
+          resume: (dz.files || [])[0] || "", entries: Array.from(app.querySelectorAll("oc-experience-entry, oc-education-entry")).map((e) => e.saved || null)};
+}
+function checkFirstPage() {
+  const v = firstPageValues();
+  const missing = ["first", "last", "email", "confirm", "city", "phone", "resume"].filter((k) => !v[k]);
+  if (v.email && v.confirm && v.email !== v.confirm) missing.push("confirm");
+  for (const [k, id] of [["first", "first-name-input"], ["last", "last-name-input"], ["email", "email-input"], ["confirm", "confirm-email-input"]]) {
+    document.getElementById(id).error = missing.includes(k) ? "This field is required" : "";
+  }
+  if (missing.includes("city")) app.querySelector("[data-test=personal-info-location] spl-autocomplete").error = "Please provide a valid location";
+  return missing.length === 0;
+}
+function screening() {
+  app.innerHTML = '<oc-screening-questions><div class="form-section"><h2>Preliminary questions</h2>' +
+    '<oc-screening-questions-form><div data-test="screening-questions-form"><sr-screening-questions-form></sr-screening-questions-form></div></oc-screening-questions-form>' +
+    '<oc-consent><div data-test="consent" class="form-section form-section--clean">' +
+    '<oc-checkbox data-test="consent-box-all"><spl-checkbox label="Select all - by selecting all, you acknowledge the checkboxes below"></spl-checkbox></oc-checkbox>' +
+    '<oc-checkbox data-test="consent-box"><spl-checkbox required label="I have read and agree to the Acme Robotics Applicant Privacy Policy"></spl-checkbox></oc-checkbox>' +
+    '<oc-checkbox data-test="consent-box"><spl-checkbox label="I agree to be contacted about future job opportunities (talent pool)"></spl-checkbox></oc-checkbox>' +
+    "</div></oc-consent>" +
+    '<oc-nav-screening-questions><footer data-test="footer"><oc-button type="secondary" data-test="footer-back"><spl-button>Back</spl-button></oc-button>' +
+    '<oc-button type="primary" data-test="footer-submit"><spl-button type="primary">Submit</spl-button></oc-button></footer></oc-nav-screening-questions>' +
+    "</div></oc-screening-questions>";
+  const all = app.querySelector("[data-test=consent-box-all] spl-checkbox");
+  all.addEventListener("spl-change", () => { window.selectAllUsed = true; });
+  app.querySelector("[data-test=footer-submit]").addEventListener("click", () => {
+    const answers = app.querySelector("sr-screening-questions-form").answers();
+    const consents = Array.from(app.querySelectorAll("[data-test=consent-box] spl-checkbox")).map((c) => c.checked);
+    const missing = QUESTIONS.filter((q) => q.required && !answers[q.id]).map((q) => q.id);
+    if (missing.length || !consents[0]) {
+      app.querySelector("[data-test=consent]").insertAdjacentHTML("afterend",
+        '<p role="alert" class="validation-summary">Please make sure that you answered all questions marked as required.</p>');
+      return;
+    }
+    window.submitted = {first: window.firstPage, answers, consents};
+    success();
+  });
+}
+function success() {
+  app.innerHTML = '<oc-success-page><div class="form-section"><h1>Application submitted!</h1>' +
+    "<p>Your application for Associate Engineer at Acme Robotics has been submitted successfully. You'll receive a confirmation email shortly.</p></div></oc-success-page>";
+}
+
+if (flags.has("expired")) {
+  app.innerHTML = '<expiring-posting><div class="form-section"><h1>This job ad has expired</h1>' +
+    "<p>Find more job offers at jobs.smartrecruiters.com</p></div></expiring-posting>";
+} else if (flags.has("posting")) {
+  posting();
+} else {
+  form();
+}
+if (flags.has("captcha")) {
+  document.body.insertAdjacentHTML("beforeend", '<iframe src="about:blank#geo.captcha-delivery.com/captcha" title="DataDome CAPTCHA" style="width:320px;height:200px"></iframe>');
+}
+</script>
+</body>
+</html>

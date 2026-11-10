@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 from ..derive import choose_source
-from ..text import closest_options, names_same, normalize, phrase_in
+from ..text import canonical_country, canonical_state, closest_options, names_same, normalize, phrase_in
 from .forms import OPTIONS_JS, NoExactChoice, close_combobox, sel
 
 CONFIRMATION = re.compile(r"(thank you|thanks) for (applying|your application|your interest)|application (has been |was )?"
@@ -50,8 +50,9 @@ class Adapter:
             visible = page.locator("iframe[src*='hcaptcha']:visible, iframe[src*='recaptcha/api2/bframe']:visible").count()
             if visible:
                 found.append("captcha")
-        # Cloudflare Turnstile (Workable): a check the candidate must pass when it shows itself.
-        if "captcha" not in found and page.locator("iframe[src*='challenges.cloudflare.com']:visible").count():
+        # Cloudflare Turnstile (Workable), DataDome (SmartRecruiters): a check the candidate must pass when it shows.
+        if "captcha" not in found and page.locator("iframe[src*='challenges.cloudflare.com']:visible, "
+                                                   "iframe[src*='captcha-delivery.com']:visible").count():
             found.append("captcha")
         text = fr.locator("body").inner_text(timeout=5000)[:20000]
         if re.search(r"no longer (accepting applications|available|open)|position (has been )?(filled|closed)|"
@@ -69,6 +70,11 @@ class Adapter:
     def adjust(self, fields: list[dict]) -> list[dict]:
         """Say what a field really asks when its label does not (Workable's "Address" is a location)."""
         return fields
+
+    def searches(self, field: dict) -> bool:
+        """A search box that lists nothing until typed into: its options are not read (opening it shows none, and
+        a list left open elsewhere would be read instead). Its answer is text, searched for when it is filled."""
+        return False
 
     def custom_fill(self, frame, field: dict, value, store=None):
         """Take over a widget this system renders specially; None means use the generic filler. ``store`` is
@@ -470,6 +476,378 @@ class Workable(Adapter):
             .filter(e => e.getClientRects().length && e.textContent.trim())
             .map(e => e.textContent.replace(/\s+/g, ' ').trim()).slice(0, 15)""")
         return list(dict.fromkeys(own + super().errors(frame)))
+
+
+# ---- SmartRecruiters (jobs.smartrecruiters.com/oneclick-ui/company/<company>/publication/<uuid>; a posting's "I'm
+# interested" leads there). An Angular page (oc-*, plain DOM with data-test hooks) whose every field is a web component
+# of SmartRecruiters' design system (spl-*) drawing its control and label in an open shadow root; extract.js reads
+# those, and an adapter tells the widgets apart by their data-test hooks (``test_ids``) and components (``hosts``):
+# - page 1: personal information, Experience / Education, profiles, resume, a message to the hiring team, Next;
+#   page 2 (when the job has screening questions): the questions, consents, Submit; then "Application submitted!";
+# - City (and an entry's office or school location) is a search that takes only one of its suggestions (at least 3
+#   characters typed): the city is typed and the suggestion naming the same city and region / country is clicked;
+# - Phone is a country list (spl-select, preset from the visitor's location) and the number: the country is picked
+#   by the stored country code, the number typed on its own;
+# - Experience / Education take one entry at a time: "Add" opens an editor, "Save" turns it into a card. Title,
+#   company and school are searches that also keep a typed name; From / To are month pickers (flatpickr) that read
+#   a typed YYYY-MM-DD when Enter is pressed;
+# - the resume is a drop zone that lists the file once taken; the "Easy Apply" pane above the form (import a resume,
+#   Apply With Indeed) is never used, nor the consents' "Select all" (it would tick the optional ones too);
+# - DataDome may put a CAPTCHA over the page: only the candidate passes it.
+
+SR_FORM = "oc-oneclick-form"
+SR_PAGES = "oc-oneclick-form, oc-screening-questions"
+SR_TYPED = ("job-title-autocomplete", "company-autocomplete", "institution-autocomplete")   # keep a typed name
+SR_CLOSED = re.compile(r"this job ad has expired", re.I)
+SR_SESSION = re.compile(r"the form has been closed to protect your data", re.I)
+
+# The phone field's country list, read from the number's input: the trigger and the search box tagged for clicks,
+# each option tagged by its country (ISO code), with its name and dialing code.
+SR_PHONE_JS = r"""(el) => {
+  let field = null;
+  for (let r = el.getRootNode(); r && r.host; r = r.host.getRootNode()) {
+    if (r.host.tagName === "SPL-PHONE-FIELD") { field = r.host; break; }
+  }
+  const select = field && field.shadowRoot && field.shadowRoot.querySelector("spl-select");
+  if (!select) return null;
+  const trigger = select.shadowRoot && select.shadowRoot.querySelector("[role=combobox], button");
+  if (trigger) trigger.setAttribute("data-jobfill-cc", "trigger");
+  const search = select.querySelector("spl-dropdown-search");
+  const box = search && search.shadowRoot && search.shadowRoot.querySelector("input");
+  if (box) box.setAttribute("data-jobfill-cc", "search");
+  const options = Array.from(select.querySelectorAll("spl-select-option")).map((o) => {
+    o.setAttribute("data-jobfill-cc-opt", o.getAttribute("value") || "");
+    const code = o.querySelector("[class*='code']");
+    return {value: o.getAttribute("value") || "", label: o.getAttribute("label") || "",
+            code: code ? code.textContent.replace(/\s+/g, "") : ""};
+  });
+  return {value: select.value || select.getAttribute("value") || "", options};
+}"""
+
+# What a month picker holds: the value of the spl-date-field around the input (an ISO date), and what it shows.
+SR_DATE_JS = r"""(el) => {
+  for (let r = el.getRootNode(); r && r.host; r = r.host.getRootNode()) {
+    if (r.host.tagName === "SPL-DATE-FIELD") return {value: String(r.host.value || r.host.getAttribute("value") || ""), shown: el.value};
+  }
+  return {value: "", shown: el.value};
+}"""
+
+# Leave the focused control, inside shadow roots too (closes a calendar or a list before Save).
+BLUR_DEEP_JS = r"""() => {
+  let a = document.activeElement;
+  while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+  if (a && a.blur) a.blur();
+}"""
+
+
+def _place_parts(text) -> list[str]:
+    return [p.strip() for p in str(text or "").split(",") if p.strip()]
+
+
+def _place_key(part: str) -> str:
+    return canonical_state(part) or canonical_country(part) or normalize(part)
+
+
+def _same_place(option: str, want: str) -> bool:
+    """A location suggestion ("Madison, WI, United States") is the stored place ("Madison, Wisconsin" or "Madison,
+    WI, USA"): the same city, and every region / country stored is in it. "Madison Heights" is another city."""
+    o, w = _place_parts(option), _place_parts(want)
+    if not o or not w or normalize(o[0]) != normalize(w[0]):
+        return False
+    rest = {_place_key(p) for p in o[1:]}
+    return all(_place_key(p) in rest for p in w[1:])
+
+
+def _wait_options(frame, field_id: str, tries: int = 20) -> list[str]:
+    """The open list's options once it shows some and they stop changing (suggestions arrive from the server)."""
+    last: list[str] | None = None
+    for _ in range(tries):
+        frame.wait_for_timeout(250)
+        texts = [t for t in frame.evaluate(OPTIONS_JS, field_id) if t]
+        if texts and texts == last:
+            return texts
+        last = texts
+    return last or []
+
+
+def _sr_place(frame, field: dict, value) -> tuple[bool, str]:
+    """A location search: type the city, click the suggestion that is the stored place (or the candidate's earlier
+    pick for it). None: a required one is asked (it takes nothing typed), an optional one is left empty."""
+    loc = frame.locator(sel(field["id"]))
+    want = str(value[0] if isinstance(value, list) and value else value)
+    alternatives = field.get("alternatives") or []
+    is_it = lambda t: _same_place(t, want) or any(normalize(t) == normalize(a) for a in alternatives)
+    if loc.input_value() and is_it(loc.input_value()):
+        return True, ""
+    city = _place_parts(want)[0] if _place_parts(want) else want
+    loc.click(timeout=5000)
+    loc.fill("")
+    loc.type(city[:40], delay=40)
+    texts = _wait_options(frame, field["id"])
+    i = next((k for k, t in enumerate(texts) if is_it(t)), None)
+    if i is None:
+        close_combobox(frame, loc)
+        loc.fill("")
+        frame.evaluate(BLUR_DEEP_JS)
+        if field.get("required"):
+            raise NoExactChoice(want, closest_options(want, texts))
+        return False, f"no suggestion is {want!r}" + (f" (it offers {texts[:8]})" if texts else "") + "; left empty"
+    frame.locator(f'[data-jobfill-opt="{i}"]').click(timeout=3000)
+    frame.wait_for_timeout(200)
+    got = loc.input_value()
+    return (True, "") if got and normalize(got) == normalize(texts[i]) else \
+        (False, f"clicked {texts[i]!r}, but it shows {got!r}")
+
+
+def _sr_typed(frame, field: dict, value) -> tuple[bool, str]:
+    """A search that keeps a typed name (title, company, school): click the suggestion that is exactly the name (or
+    the candidate's earlier pick for it), else leave the typed name. Never a look-alike."""
+    loc = frame.locator(sel(field["id"]))
+    want = str(value)
+    if normalize(loc.input_value()) == normalize(want):
+        return True, ""
+    loc.click(timeout=5000)
+    loc.fill("")
+    loc.type(want[:120], delay=20)
+    texts = _wait_options(frame, field["id"], tries=8)
+    alternatives = field.get("alternatives") or []
+    i = next((k for k, t in enumerate(texts) if normalize(t) == normalize(want)), None)
+    if i is None:
+        i = next((k for k, t in enumerate(texts) if any(normalize(t) == normalize(a) for a in alternatives)), None)
+    if i is not None:
+        frame.locator(f'[data-jobfill-opt="{i}"]').click(timeout=3000)
+    else:
+        frame.evaluate(BLUR_DEEP_JS)   # leaving the field keeps what was typed
+    frame.wait_for_timeout(200)
+    got = loc.input_value()
+    return (True, "") if got.strip() else (False, f"typed {want!r}, but the field did not keep it")
+
+
+def _sr_date(frame, field: dict, value) -> tuple[bool, str]:
+    """A month picker (flatpickr): typed as YYYY-MM-DD and read on Enter, which also closes its calendar."""
+    loc = frame.locator(sel(field["id"]))
+    want = str(value)
+    loc.click(timeout=5000)
+    loc.press("Control+A")
+    loc.press("Backspace")
+    loc.type(want, delay=30)
+    loc.press("Enter")
+    frame.wait_for_timeout(200)
+    frame.evaluate(BLUR_DEEP_JS)
+    got = loc.evaluate(SR_DATE_JS)
+    if got["value"][:7] == want[:7] or (not got["value"] and want[:4] in got["shown"]):
+        return True, ""
+    return False, f"typed {want!r}, but the month picker holds {got['value'] or got['shown'] or 'nothing'!r}"
+
+
+def _same_country(name: str, country) -> bool:
+    return bool(country) and (canonical_country(name) or normalize(name)) == (canonical_country(str(country))
+                                                                              or normalize(str(country)))
+
+
+def _sr_phone(frame, field: dict, value, store) -> tuple[bool, str]:
+    """The phone: the country list set by the stored country code (the stored country decides between countries
+    sharing a code, +1), then the number typed on its own."""
+    loc = frame.locator(sel(field["id"]))
+    number = str(value).strip()
+    code = _digits(store.get_fact("contact.phone_country_code")) if store is not None else ""
+    country = store.get_fact("address.country") if store is not None else None
+    if code and number.startswith("+") and _digits(number).startswith(code):
+        number = re.sub(rf"^\+\s*{code}[\s.-]*", "", number)
+    note = ""
+    info = loc.evaluate(SR_PHONE_JS) if code else None
+    if info and info["options"]:
+        same_code = [o for o in info["options"] if _digits(o["code"]) == code]
+        if not same_code:
+            return False, f"the phone's country list has no +{code}"
+        pick = next((o for o in same_code if _same_country(o["label"], country)), None)
+        now = next((o for o in same_code if o["value"] == info["value"]), None)
+        if pick is None:
+            pick = now or same_code[0]
+            if len(same_code) > 1:
+                note = f"+{code} is the code of several countries; {pick['label']} is selected"
+        if pick["value"] != info["value"]:
+            frame.locator('[data-jobfill-cc="trigger"]').click(timeout=5000)
+            search = frame.locator('[data-jobfill-cc="search"]')
+            if search.count() and search.is_visible():
+                search.fill(pick["label"])
+            frame.locator(f'[data-jobfill-cc-opt="{pick["value"]}"]').click(timeout=5000)
+            frame.wait_for_timeout(200)
+            if loc.evaluate(SR_PHONE_JS)["value"] != pick["value"]:
+                return False, f"could not set the phone's country to {pick['label']} (+{code})"
+    loc.click(timeout=5000)
+    loc.fill("")
+    loc.type(number, delay=20)
+    loc.evaluate(BLUR_JS)
+    frame.wait_for_timeout(150)
+    if not loc.input_value().strip():
+        return False, "the phone number did not take"
+    return True, note
+
+
+class SmartRecruiters(Adapter):
+    name = "smartrecruiters"
+    # The form's fields (drawn in shadow roots, which Playwright's CSS reaches), the success page, the posting's
+    # "I'm interested", the expired-job page, or DataDome's CAPTCHA in front of them.
+    ready_selector = ("oc-oneclick-form input, oc-screening-questions input, oc-screening-questions textarea, "
+                      "oc-success-page, a.js-oneclick, expiring-posting, iframe[src*='captcha-delivery.com']")
+    root_selector = SR_PAGES
+    # The spl-button host: its <button> is in a shadow root that innerText reads as empty; the host holds "Submit".
+    submit_selector = "[data-test=footer-submit] spl-button"
+    SECTIONS = ("experience", "education")
+
+    def open(self, page, url: str) -> None:
+        super().open(page, url)
+        self._decline_cookies(page)
+        if not page.locator(f"{SR_PAGES}, oc-success-page").count():
+            # The posting itself: "I'm interested" opens the form.
+            link = page.locator("a.js-oneclick:visible, #st-apply:visible").first
+            if link.count():
+                link.click()
+                page.wait_for_load_state("domcontentloaded")
+                self.wait_ready(page)
+                self._decline_cookies(page)
+
+    @staticmethod
+    def _decline_cookies(page) -> None:
+        """OneTrust's banner (shown where the law asks for it): decline the optional cookies."""
+        button = page.locator("#onetrust-reject-all-handler:visible").first
+        if button.count():
+            try:
+                button.click(timeout=3000)
+                page.wait_for_timeout(300)
+            except Exception:
+                pass
+
+    def prepare(self, page, store, dry_run: bool = False) -> list[str]:
+        self._decline_cookies(page)
+        return self.blockers(page)
+
+    def blockers(self, page) -> list[str]:
+        found = super().blockers(page)
+        text = self.frame(page).locator("body").inner_text(timeout=5000)[:20000]
+        if SR_CLOSED.search(text) and "job_closed" not in found:
+            found.append("job_closed")
+        if SR_SESSION.search(text):
+            found.append("session_expired")   # idle too long: the candidate reopens the form ("Open application form")
+        return found
+
+    def adjust(self, fields: list[dict]) -> list[dict]:
+        out = []
+        for f in fields:
+            ids, hosts = f.get("test_ids") or [], f.get("hosts") or []
+            if f.get("section") in self.SECTIONS and not f.get("entry"):
+                continue   # an entry editor the candidate opened: theirs, left alone (see entries())
+            if "consent-box-all" in ids:
+                continue   # "Select all" would also tick the optional consents
+            if f["kind"] == "dropdown" and "spl-phone-field" in hosts:
+                continue   # the phone's country: set with the number
+            if "resume-upload" in ids:
+                f.update(label="Resume", required=True)   # the drop zone says "Choose a file"; the section is required
+            elif "hiring-manager-message-text" in ids:
+                f["label"] = "Message to the hiring team"
+            elif "education-description" in ids:
+                f["label"] = "Education description"   # nothing stored for it; not a role's or a project's
+            if "location-autocomplete" in ids:
+                f["widget"] = "place"
+                if not f.get("section"):
+                    f["label"] = WORKABLE_LOCATION   # "City": a place, picked by its city and region / country
+            elif "spl-date-field" in hosts:
+                f.update(widget="date", type="date")   # typed as YYYY-MM-DD
+            elif f["kind"] == "combobox" and any(t in ids for t in SR_TYPED):
+                f["widget"] = "typed"
+            elif f.get("type") == "tel" and "spl-phone-field" in hosts:
+                f["widget"] = "phone"
+            if f.get("widget") in ("place", "typed"):
+                f.pop("options", None)   # a search (see searches()): its answer is the stored text
+            out.append(f)
+        return out
+
+    def searches(self, field: dict) -> bool:
+        ids = field.get("test_ids") or []
+        return field["kind"] == "combobox" and ("location-autocomplete" in ids or any(t in ids for t in SR_TYPED))
+
+    def custom_fill(self, frame, field: dict, value, store=None):
+        widget = field.get("widget")
+        if widget == "place":
+            return _sr_place(frame, field, value)
+        if widget == "typed":
+            return _sr_typed(frame, field, value)
+        if widget == "date":
+            return _sr_date(frame, field, value)
+        if widget == "phone":
+            return _sr_phone(frame, field, value, store)
+        return super().custom_fill(frame, field, value, store)
+
+    def entries(self, frame, store, dry_run: bool = False, notes: list | None = None):
+        """Experience / Education: for each stored entry the page has no card for yet, "Add" opens an editor, the
+        runner fills it, and "Save" turns it into a card. Cards already there count (from an earlier run, the
+        candidate's, or SmartRecruiters' own prefill); none is edited or deleted. An open editor is the candidate's."""
+        notes = notes if notes is not None else []
+        for kind in self.SECTIONS:
+            box = frame.locator(f"{SR_FORM} [data-test={kind}]")
+            if not box.count():
+                continue
+            name = kind.capitalize()
+            cards = lambda: box.locator(f"[data-test={kind}-entry]").count()
+            editors = box.locator(f"[data-test={kind}-edit-form]")
+            want, have = len(store.records(kind)), cards()
+            if want <= have:
+                continue
+            if editors.count():
+                notes.append(f"{name}: an entry is open in its editor, left as it is (save or cancel it, then run "
+                             "`apply fill` again)")
+                continue
+            if dry_run:
+                notes.append(f"would add {want - have} {name} entr{'y' if want - have == 1 else 'ies'} for the "
+                             "stored ones (Add, fill, Save)")
+                continue
+            for k in range(have, want):
+                add = box.locator(f"[data-test=add-{kind}] button").first
+                if not add.count() or not add.is_enabled():
+                    notes.append(f"{name}: its Add button is not available")
+                    break
+                add.click(timeout=5000)
+                editor = editors.first
+                try:
+                    editor.wait_for(state="visible", timeout=5000)
+                except Exception:
+                    notes.append(f"{name}: clicking Add did not open an editor")
+                    break
+                editor.evaluate("(e, k) => e.setAttribute('data-jobfill-index', String(k))", k)
+                yield f'{SR_FORM} [data-test={kind}] [data-jobfill-index="{k}"]'
+                frame.evaluate(BLUR_DEEP_JS)   # close a calendar or a list left open
+                editor.locator(f"[data-test={kind}-save] button").first.click(timeout=5000)
+                for _ in range(25):
+                    frame.wait_for_timeout(200)
+                    if not editors.count():
+                        break
+                else:
+                    said = [t.strip() for t in box.locator("[data-test=validation-summary-message]").all_inner_texts()
+                            + editor.locator(".c-spl-form-field-error").all_inner_texts() if t.strip()]
+                    notes.append(f"{name} {k + 1}: not saved ({'; '.join(dict.fromkeys(said)) or 'the editor stayed open'}); "
+                                 "left open for the candidate")
+                    break
+            notes.append(f"{name}: {cards() - have} entr{'y' if cards() - have == 1 else 'ies'} added, "
+                         f"{cards()} for {want} stored")
+
+    def after_upload(self, frame) -> None:
+        # Taken once the drop zone lists the file.
+        for _ in range(60):
+            frame.wait_for_timeout(250)
+            if frame.locator("[data-test=resume-upload] .c-spl-file-list li").count():
+                break
+        frame.wait_for_timeout(300)
+
+    def next_button(self, frame):
+        nxt = frame.locator("[data-test=footer-next] spl-button").filter(visible=True)
+        return nxt.first if nxt.count() else super().next_button(frame)
+
+    def errors(self, frame) -> list[str]:
+        own: list[str] = []
+        for selector in (".c-spl-form-field-error", "[data-test=validation-summary-message]", "[role=alert]"):
+            own += [t.strip() for t in frame.locator(selector).all_inner_texts() if t.strip()]
+        return list(dict.fromkeys(own + super().errors(frame)))[:15]
 
 
 # ---- Workday prompt ("selectinput"), e.g. "How Did You Hear About Us?". It looks like a dropdown but is a
@@ -883,7 +1261,7 @@ class ICIMS(Adapter):
 
 
 ADAPTERS = {"greenhouse": Greenhouse(), "lever": Lever(), "icims": ICIMS(), "ashby": Ashby(), "workday": Workday(),
-            "workable": Workable(), "generic": Adapter()}
+            "workable": Workable(), "smartrecruiters": SmartRecruiters(), "generic": Adapter()}
 
 
 def get(name: str | None) -> Adapter:

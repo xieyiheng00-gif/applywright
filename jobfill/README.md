@@ -89,7 +89,7 @@ jobfill/
   matcher.py    label -> question              derive.py  plain-Python answer rules
   resolver.py   fields -> answers / AI tasks   cli.py     commands
   apply/        /apply: detect.py (which system), extract.js + forms.py (read/fill any form),
-                adapters.py (Greenhouse/Lever/iCIMS/Ashby/Workday/Workable quirks), runner.py, browser.py (shared window)
+                adapters.py (Greenhouse/Lever/iCIMS/Ashby/Workday/Workable/SmartRecruiters quirks), runner.py, browser.py (shared window)
   report.py     per-application result record (data/applications/)
   timing.py     development: where the time went (off unless JOBFILL_TIMING is set)
   portal/       setup portal: layout.py (pages and wording), form.py (values in and out through the

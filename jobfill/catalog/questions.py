@@ -204,7 +204,8 @@ QUESTIONS = [
        "personal website or portfolio", "website portfolio", "link to portfolio"],
       answer=fact("contact.website")),
     Q("twitter", 1, "contact", "X / Twitter",
-      ["twitter", "twitter url", "x twitter", "x handle", "twitter handle", "twitter profile"],
+      ["twitter", "twitter url", "x twitter", "x handle", "twitter handle", "twitter profile", "x fka twitter",
+       "x formerly twitter", "x formerly known as twitter"],
       answer=fact("contact.twitter")),
 
     # =================================================================== work authorization
@@ -1067,7 +1068,8 @@ QUESTIONS = [
     Q("cover_letter_text", 3, "narrative", "Cover letter",
       ["cover letter", "cover letter text", "paste your cover letter", "write a cover letter", "letter of interest",
        "motivation letter", "motivational letter", "statement of interest", "cover letter optional",
-       "please include a cover letter"],
+       "please include a cover letter", "message to the hiring team", "message to the hiring manager",
+       "message to hiring team", "message to hiring manager"],
       answer=ai("unique", "application", ["summary", "motivations", "experience", "projects", "skills"],
                 "Three short paragraphs: why this role at this company, two concrete matching examples, close. "
                 "Plain text, no placeholders, no fabricated claims.", optional="skip", playbook="cover_letter")),

@@ -17,9 +17,9 @@ python -m playwright install chromium
 ## Detect, then fill
 
 1. **Detect** (`apply start <url>`, plain Python): URL rules, then the page HTML (embedded
-   Greenhouse/Lever/iCIMS/Ashby/Workable forms, schema.org `JobPosting`). Not a job posting (search page, company
-   board, removed posting, unrelated page) is an error. Greenhouse, Lever, Ashby and Workable postings are also
-   read through their public APIs, so the posting text costs no browsing.
+   Greenhouse/Lever/iCIMS/Ashby/Workable/SmartRecruiters forms, schema.org `JobPosting`). Not a job posting (search
+   page, company board, removed posting, unrelated page) is an error. Greenhouse, Lever, Ashby, Workable and
+   SmartRecruiters postings are also read through their public APIs, so the posting text costs no browsing.
 2. **Fill**, by system:
 
 | System | Who fills | Notes |
@@ -27,7 +27,8 @@ python -m playwright install chromium
 | Greenhouse, Lever, iCIMS, Ashby | jobfill's Playwright filler (`apply fill`) | visible Chromium window that stays open; React dropdowns, autocompletes, radio/checkbox groups, yes/no toggle buttons, resume upload; re-reads the form for follow-up questions; iCIMS email step and multi-page `apply next` |
 | Workday | `jobfill login` (you run it), then the Playwright filler | Apply → Apply Manually → sign in / create account; multi-page `apply next`; search-and-pick menus, including two-level ones (Job Boards → LinkedIn), read by their pills; "Select One" dropdowns |
 | Workable (`apply.workable.com/<company>/j/<code>`, `<company>.workable.com`, company pages linking or framing it) | jobfill's Playwright filler | one page; declines the optional cookies (the banner blocks the form until answered); Education / Experience entered one at a time (+ Add, fill, Update; existing cards count, an editor the candidate opened is left alone); date pickers typed key by key (Workable takes no date after the current month: an expected graduation is dropped by the picker and reported under `fill_failed`, the entry reads as ongoing); phone country set by the stored code; "Address" answered as city, region and country; yes/no and choice boxes, read-only selects, the privacy consent; never uses "Autofill application"; a Cloudflare Turnstile check at submit is the candidate's. US jobs may show an optional EEO survey right after Submit: `apply submit` reports it (`survey: "eeo"`), `apply fill` answers it from the stored EEO facts (decline included; the survey's own preselection is not taken as an answer), and it goes in only with another `apply submit --confirm` |
-| Company portals (Amazon, TikTok, Google, ...) and other ATSs (SmartRecruiters, Jobvite, ...) | the agent in the built-in browser; portals that need an account use the jobfill window (`--ats generic`) so the login carries over | answers still come from `jobfill resolve` |
+| SmartRecruiters (`jobs.smartrecruiters.com/<company>/<id>`, its "I'm interested" form, company pages linking to it) | jobfill's Playwright filler | fields drawn by web components (read through their shadow roots); City picked among its suggestions by city and region / country (none matching: asked, never a look-alike); phone country set by the stored code; Experience / Education entered one at a time (Add, fill, Save; existing cards count, an editor the candidate opened is left alone); month pickers typed; resume drop zone; page 2 screening questions and consents with `apply next` (never "Select all"); never uses the "Easy Apply" import; a DataDome CAPTCHA is the candidate's |
+| Company portals (Amazon, TikTok, Google, ...) and other ATSs (Jobvite, Taleo, ...) | the agent in the built-in browser; portals that need an account use the jobfill window (`--ats generic`) so the login carries over | answers still come from `jobfill resolve` |
 | LinkedIn / Indeed / Jobs by Workable listings | the agent follows the employer's apply link first | |
 
 ## Tailored CVs

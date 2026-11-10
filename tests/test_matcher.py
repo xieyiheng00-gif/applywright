@@ -24,6 +24,8 @@ CASES = [
     ("State/Province", "state", None, None),
     ("LinkedIn URL", "linkedin", None, None),
     ("Website / Portfolio", "website", None, None),
+    ("X (fka Twitter)", "twitter", None, None),                     # SmartRecruiters' Your Profiles
+    ("Message to the hiring team", "cover_letter_text", ESSAY, None),   # SmartRecruiters (the adapter's label)
     ("Resume/CV", "resume_file", "file", None),
     ("Type to Add Skills", "skills_list", None, None),              # Workday's skills prompt
     ("Are you legally authorized to work in Canada?", "authorized_to_work", None, None),
