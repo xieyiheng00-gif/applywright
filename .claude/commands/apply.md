@@ -77,10 +77,9 @@ it the same way and replace the upload with `apply set --field <resume field> --
      written like any other (optional or not: a blank essay on an application reads as no interest), and
      you also classify its label with the `/learn` rules (`python -m jobfill pending` has its id) so plain
      Python recognizes it next time.
-   - `fill_failed` - failed once, often a dropdown that loaded slowly. The result says `rerun: true`: run
-     `apply fill` once more; it retries these fields.
-   - `handoff` - failed twice with the same value, so plain Python stops trying it (retrying a
-     deterministic failure only wastes runs). You decide, using `value`, `options` and `why`:
+   - `handoff` - jobfill tried the field once and it failed. Every field is tried only once per value:
+     plain Python never tries that value again (another `apply fill` would only spend a run). You decide,
+     using `value`, `options` and `why`:
      - the value is right but phrased differently from the options: pick the matching option and enter
        it with `python -m jobfill apply set --app <ID> --field <field> --value "<option>"` (`--json` for
        lists);
@@ -88,9 +87,9 @@ it the same way and replace the upload with `apply set --field <resume field> --
        batched question message;
      - the widget is one jobfill cannot operate (`apply set` fails too): ask the candidate to set it in
        the window.
-     A field whose value changes (a corrected fact, a new answer) gets two fresh tries.
-2. **One fill per page.** Run `apply fill` again on the same page only when the result says `rerun: true`,
-   after a blocker is cleared, after the candidate worked in the window, or after a corrected fact
+     A field whose value changes (a corrected fact, a new answer) gets one fresh try.
+2. **One fill per page.** Run `apply fill` again on the same page only after a blocker is cleared, after
+   the candidate worked in the window, after you classified `uncertain` / `unmatched` labels, or after a corrected fact
    (`--overwrite` re-types only values jobfill typed itself). Never rerun just because fields are still
    empty or answers are waiting for the candidate. Type each answer straight into its own field instead:
    a recorded written answer the candidate approved with its `set_with` command (`apply set --field <field>
@@ -130,7 +129,7 @@ it the same way and replace the upload with `apply set --field <resume field> --
    answered), adds Education / Experience one entry at a time (+ Add, fill, Update; cards already there
    count, and an entry editor the candidate opened is theirs: left alone, see `added`), and answers
    "Address" as city, region and country. Its date pickers take no date after the current month: an
-   expected graduation comes back under `fill_failed` with that reason and the entry shows as ongoing;
+   expected graduation comes back under `handoff` with that reason and the entry shows as ongoing;
    tell the candidate, do not retry it. It never uses Workable's "Autofill application" box. A
    Cloudflare check at submit is a `captcha` blocker for the candidate. For US jobs Workable may show an
    optional EEO survey right after the application went in (step 5).

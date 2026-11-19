@@ -108,9 +108,9 @@ FACTS = [
       "Voluntary EEO question: gender (male, female, non-binary, or decline)?",
       choices="gender", sensitive=True, setup="required"),
     F("eeo.race", 1, "enum", "Race / ethnicity",
-      "Voluntary EEO question: race/ethnicity (American Indian/Alaska Native, Asian, Black/African "
-      "American, Hispanic/Latino, Native Hawaiian/Pacific Islander, White, Middle Eastern/North African, "
-      "two or more, or decline)? You may pick several.",
+      "Voluntary EEO question: race/ethnicity (American Indian/Alaska Native, Asian (or East, South or "
+      "Southeast Asian, for forms that ask), Black/African American, Hispanic/Latino, Native Hawaiian/Pacific "
+      "Islander, White, Middle Eastern/North African, two or more, or decline)? You may pick several.",
       choices="race", multi=True, sensitive=True, setup="required"),
     F("eeo.hispanic_latino", 1, "enum", "Hispanic or Latino",
       "Voluntary EEO question: do you identify as Hispanic or Latino (yes, no, decline)?",

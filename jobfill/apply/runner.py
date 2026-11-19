@@ -18,7 +18,7 @@ from .detect import Detection, detect
 from .forms import NoExactChoice, extract, fill, is_empty, search_combobox, to_resolver_field
 
 MAX_PASSES = 4   # re-read the form after filling: answers can reveal follow-up questions
-MAX_FILL_ATTEMPTS = 2   # same field, same value: a second failure means retrying will not help
+MAX_FILL_ATTEMPTS = 1   # every field is tried once: a failure goes to the agent, never retried with the same value
 
 
 class ApplyError(Exception):
@@ -203,7 +203,7 @@ def fill_frame(frame, store, app_id: int, adapter, *, overwrite: bool | str, fil
                 elif not _unanswered(f) and not (overwrite is True or (overwrite == "own" and owner == "jobfill")):
                     entry["fill"] = "kept (already has a value)"
                 elif (tried := store.fill_attempts(app_id, _key(store, f), r["value"])) >= MAX_FILL_ATTEMPTS:
-                    entry["fill"] = f"not tried: failed {tried} times with this value"
+                    entry["fill"] = "not tried again: it failed with this value"
                 else:
                     # The question tells a menu adapter how to read its choices ("Social Media" for LinkedIn).
                     # A search-and-pick menu takes a list (skills) one entry at a time, not as one joined text.
@@ -333,10 +333,11 @@ def _owner(store, f: dict, r: dict, typed: dict | None, logged: dict) -> str | N
 
 
 def _note(store, app_id: int, f: dict, entry: dict, value) -> None:
-    """Record the fill result; after MAX_FILL_ATTEMPTS failures with the same value, hand the field off.
+    """Record the fill result; a field that failed is handed off at once (MAX_FILL_ATTEMPTS).
 
-    A deterministic failure (the option is not in the list, a widget jobfill cannot operate) will not go
-    away by retrying, so the agent decides instead: pick the right option, or ask the candidate.
+    Each field is tried once per value: retrying the same value only spends another run, so the agent
+    decides instead (pick the right option, or ask the candidate). A new value (a corrected fact, a new
+    answer) gets one fresh try.
     """
     attempts = store.note_fill(app_id, _key(store, f), entry["fill"], value)
     if attempts >= MAX_FILL_ATTEMPTS:
@@ -351,11 +352,7 @@ def summarize(report: dict, app_id: int) -> dict:
         "blockers": report.get("blockers", []),
         "counts": {s: len(pick(s)) for s in ("filled", "needs_ai", "needs_user", "uncertain", "unmatched", "skipped",
                                              "handoff")},
-        # Failed once: the next `apply fill` tries once more.
-        "fill_failed": [{"field": k, "label": v["label"], "value": v.get("value"), "why": v["fill"]}
-                        for k, v in fields.items() if str(v.get("fill", "")).startswith("failed")
-                        and v["status"] != "handoff"],
-        # Failed twice with the same value: Python stops; the agent decides or asks the candidate.
+        # Tried once and failed: Python does not try that value again; the agent decides or asks the candidate.
         "handoff": [{"field": v["field"], "label": v["label"], "value": v.get("value"), "options": v.get("options"),
                      "why": v["fill"], "attempts": v.get("attempts")} for v in pick("handoff")],
         "needs_user": [{"field": v["field"], "label": v["label"], "ask": v.get("ask"), "fact": v.get("fact"),
@@ -380,9 +377,8 @@ def summarize(report: dict, app_id: int) -> dict:
                          for k, v in fields.items() if v.get("by") == "candidate"],
         "page": report.get("page"),
     }
-    # Run `apply fill` again on this page only to retry a failed field: nothing else changes the result. An
-    # approved answer goes straight into its own field with `apply set`.
-    out["rerun"] = bool(out["fill_failed"])
+    # One `apply fill` per page: rerunning changes nothing (a failed field is not tried again with the same
+    # value). An approved answer goes straight into its own field with `apply set`.
     for task in out["needs_ai"]:
         task["set_with"] = f"python -m jobfill apply set --app {app_id} --field {task['field']} --file <approved answer>"
     if report.get("moved_by_candidate"):

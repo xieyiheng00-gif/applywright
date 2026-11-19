@@ -226,7 +226,7 @@ class TestWorkableFiller(unittest.TestCase):
     def test_fills_the_form(self):
         page = self.open()
         report, summary = self.fill(page)
-        self.assertNotIn("fill_failed", summary)
+        self.assertNotIn("handoff", summary)
         s = self.state(page)
         self.assertEqual(s["cookie"], "decline")                  # the banner's backdrop is gone, optional cookies declined
         self.assertEqual([page.input_value(f"#{n}") for n in ("firstname", "lastname", "email")],
@@ -298,7 +298,7 @@ class TestWorkableFiller(unittest.TestCase):
     def test_future_end_date_is_reported_not_retried_blindly(self):
         page = self.open("#maxdate=2026-11")
         _, summary = self.fill(page)
-        [failed] = summary["fill_failed"]
+        [failed] = summary["handoff"]                             # tried once, handed off: not retried
         self.assertEqual(failed["value"], "05/2027")              # expected graduation
         self.assertIn("takes no date after the current month", failed["why"])
         self.assertTrue(self.state(page)["cards"][0].endswith("Period September 2025"))   # saved as ongoing

@@ -268,6 +268,9 @@ def choose_enum_option(target: str, options: list, choice_set: dict):
             best, best_margin = opt, margin
     if best is not None:
         return best
+    # A subgroup ("east_asian") the form does not list: its group's option ("Asian") answers it.
+    if (parent := choice_set.get("_parents", {}).get(target)) is not None:
+        return choose_enum_option(parent, options, choice_set)
     # Two unlabeled options like "I will require sponsorship" / "I will not ...".
     if target in ("true", "false") and len(options) == 2:
         neg = [bool(_NEGATION.search(n)) for n in norms]

@@ -24,4 +24,5 @@ def choice_set(name: str) -> dict:
                     for canon, syns in raw["values"].items()},
         "_ignore": [re.compile(p) for p in raw.get("ignore", ())],
         "_labels": raw.get("labels", {}),
+        "_parents": raw.get("parents", {}),
     }

@@ -25,9 +25,7 @@ def _not_entered(row: dict) -> bool:
 
 def open_reason(row: dict) -> str | None:
     if _not_entered(row):
-        tries = row.get("attempts") or 0
-        return (f"jobfill could not enter it ({tries} tries); the agent or you set it" if tries >= 2
-                else "jobfill could not enter it yet")
+        return "jobfill could not enter it; the agent or you set it"
     return OPEN.get(row["status"])
 
 

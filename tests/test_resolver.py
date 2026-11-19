@@ -428,6 +428,34 @@ class TestNoExactOption(unittest.TestCase):
         self.assertEqual(self.resolve(field)["value"], "Computer Science (CS)")
 
 
+class TestRaceSubgroups(unittest.TestCase):
+    """An Asian subgroup is its own answer: "Asian" never picks one for the candidate, and a stored subgroup
+    still answers a form that offers only "Asian"."""
+    SUBGROUPS = ["East Asian", "South Asian", "Southeast Asian", "White", "Decline to self-identify"]
+
+    def setUp(self):
+        self.store = fresh_store(with_profile=True, owner=self)
+        self.app = self.store.start_application("Acme", "Engineer")
+
+    def race(self, stored, options, ftype="select"):
+        self.store.set_fact("eeo.race", stored)
+        field = {"id": "r", "label": "Race / Ethnicity", "type": ftype, "options": options}
+        return Resolver(self.store, self.app, today=TODAY).resolve([field])["fields"][0]
+
+    def test_a_stored_subgroup_picks_its_own_option(self):
+        self.assertEqual(self.race(["east_asian"], self.SUBGROUPS).get("value"), "East Asian")
+        self.assertEqual(self.race(["southeast_asian"], self.SUBGROUPS).get("value"), "Southeast Asian")
+
+    def test_a_stored_subgroup_answers_a_plain_asian_option(self):
+        options = ["Asian (Not Hispanic or Latino)", "White (Not Hispanic or Latino)", "Two or More Races"]
+        self.assertEqual(self.race(["east_asian"], options).get("value"), "Asian (Not Hispanic or Latino)")
+
+    def test_plain_asian_never_picks_a_subgroup(self):
+        r = self.race(["asian"], self.SUBGROUPS)
+        self.assertNotEqual(r.get("status"), "filled")
+        self.assertNotIn(r.get("value"), self.SUBGROUPS)
+
+
 class TestListSearch(unittest.TestCase):
     """A long list is searched by the name, then its distinctive words; the pick stays the exact name."""
 
