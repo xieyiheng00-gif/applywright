@@ -54,7 +54,12 @@ CHOICE_SETS: dict[str, dict] = {
         "values": {
             "american_indian_alaska_native": ["american indian", "alaska native",
                                               "alaskan native", "native american", "indigenous"],
-            "asian": ["asian", "east asian", "south asian", "southeast asian"],
+            # Subgroups are their own answers: "Asian" never picks "Southeast Asian" for someone, and a
+            # stored subgroup still answers a form that only offers "Asian" (see "parents").
+            "asian": ["asian"],
+            "east_asian": ["east asian"],
+            "south_asian": ["south asian"],
+            "southeast_asian": ["southeast asian", "south east asian"],
             "black": ["black", "african american"],
             "hispanic_latino": ["hispanic", "latino", "latina", "latinx", "latine"],
             "native_hawaiian_pacific_islander": ["native hawaiian", "pacific islander"],
@@ -66,6 +71,8 @@ CHOICE_SETS: dict[str, dict] = {
         },
         # "Asian (Not Hispanic or Latino)" must not count as a Hispanic match.
         "ignore": [r"\bnot hispanic or latino\b", r"\bnon hispanic\b"],
+        # A subgroup answers its group's option when the form does not list the subgroup.
+        "parents": {"east_asian": "asian", "south_asian": "asian", "southeast_asian": "asian"},
     },
     "hispanic_latino": {
         "values": {

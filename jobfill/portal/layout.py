@@ -359,6 +359,7 @@ CHOICE_LABELS = {
     "gender": {"male": "Male", "female": "Female", "non_binary": "Non-binary", "decline": "I don't wish to answer"},
     "race": {
         "american_indian_alaska_native": "American Indian or Alaska Native", "asian": "Asian",
+        "east_asian": "East Asian", "south_asian": "South Asian", "southeast_asian": "Southeast Asian",
         "black": "Black or African American", "hispanic_latino": "Hispanic or Latino",
         "native_hawaiian_pacific_islander": "Native Hawaiian or Other Pacific Islander", "white": "White",
         "middle_eastern_north_african": "Middle Eastern or North African", "two_or_more": "Two or More Races",
