@@ -77,7 +77,7 @@ class TestWorkdayPrompt(unittest.TestCase):
         report, summary = self.fill(page, overwrite=True)
         self.assertEqual(self.source_entry(report)["fill"], "ok")
         self.assertEqual(self.pills(page), ["LinkedIn"])
-        self.assertNotIn("fill_failed", summary)
+        self.assertNotIn("handoff", summary)
 
     def test_menu_without_category_marks_undoes_wrong_picks(self):
         page = self.open("#nosearch&nomarks")    # "Career Site" etc. look like categories but are choices
@@ -123,18 +123,16 @@ class TestWorkdayPrompt(unittest.TestCase):
         self.assertEqual(page.evaluate("() => window.picks"), 1)
         self.assertEqual(self.source_entry(report)["fill"], "ok")
 
-    def test_two_failed_runs_hand_off_with_the_real_choices(self):
+    def test_a_failed_pick_hands_off_at_once_with_the_real_choices(self):
         self.store.set_fact("source.how_heard_default", "Hacker News")   # not in Visa's menu
         page = self.open()
         first, s1 = self.fill(page, overwrite=True)
-        self.assertEqual([f["label"] for f in s1["fill_failed"]], ["How Did You Hear About Us?*"])
-        second, s2 = self.fill(page)
-        hand = s2["handoff"][0]
-        self.assertEqual(hand["attempts"], 2)
+        hand = s1["handoff"][0]
+        self.assertEqual((hand["label"], hand["attempts"]), ("How Did You Hear About Us?*", 1))
         self.assertIn("Job Boards > LinkedIn", hand["why"])              # options to choose from, for the agent
         self.assertIn("Career Site", hand["why"])
-        third, s3 = self.fill(page)
-        self.assertTrue(self.source_entry(third)["fill"].startswith("not tried"))
+        second, s2 = self.fill(page)
+        self.assertTrue(self.source_entry(second)["fill"].startswith("not tried"))
         self.assertEqual(self.pills(page), [])
 
 

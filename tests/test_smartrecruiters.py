@@ -172,7 +172,7 @@ class TestSmartRecruitersFiller(FillerCase):
     def test_fills_the_first_page(self):
         page = self.open("#mxphone")                                # phone country preset from the visitor's location
         report, summary = self.fill(page)
-        self.assertNotIn("fill_failed", summary)
+        self.assertNotIn("handoff", summary)
         v = self.values(page)
         self.assertEqual([v[k] for k in ("first", "last", "email", "confirm")],
                          ["Jordan", "Rivera", "jordan.rivera@example.com", "jordan.rivera@example.com"])
@@ -202,7 +202,7 @@ class TestSmartRecruitersFiller(FillerCase):
         [asked] = [q for q in summary["needs_user"] if q["label"] == "City, region and country"]
         self.assertIn("apply set", asked["set_with"])                 # the candidate picks; never a look-alike
         self.assertEqual(self.values(page)["city"], "")
-        self.assertNotIn("fill_failed", summary)
+        self.assertNotIn("handoff", summary)
 
     def test_blockers_and_the_posting_page(self):
         self.assertEqual(self.sr.blockers(self.open()), [])
@@ -306,7 +306,7 @@ class TestSmartRecruitersScreening(unittest.TestCase):
         moved = next_page(self.state, page, self.sr, self.app)
         self.assertEqual((moved["moved"], moved["page"]["n"], moved["errors"]), (True, 2, []))
         summary = fill_page(self.store, self.data, self.app, self.state, page, self.sr)
-        self.assertNotIn("fill_failed", summary)
+        self.assertNotIn("handoff", summary)
         self.assertEqual(page.evaluate("() => document.querySelector('sr-screening-questions-form').answers()"),
                          {"q_auth": "Yes", "q_sponsor": "Yes", "q_heard": "LinkedIn", "q_why": "", "q_certify": True})
         consents = page.evaluate("() => Array.from(document.querySelectorAll('[data-test=consent] spl-checkbox')).map((c) => c.checked)")

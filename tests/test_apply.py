@@ -107,17 +107,18 @@ class TestFiller(unittest.TestCase):
         report = fill_frame(adapter.frame(page), store, app, adapter, overwrite=True)
         return page, report, summarize(report, app)
 
-    def test_a_page_is_filled_once_unless_a_field_failed(self):
+    def test_a_page_is_filled_once(self):
         from jobfill.apply.runner import summarize
         def report(**field):
             return {"fields": {"q": {"label": "Q", **field}}}
         waiting = report(status="needs_ai", ai_task={"question_id": "why_us"})
         out = summarize(waiting, 7)
-        self.assertIs(out["rerun"], False)
         self.assertIn("apply set --app 7 --field q --file", out["needs_ai"][0]["set_with"])
-        self.assertIs(summarize(report(status="needs_user"), 7)["rerun"], False)
-        self.assertIs(summarize(report(status="filled", fill="ok"), 7)["rerun"], False)
-        self.assertIs(summarize(report(status="filled", fill="failed: no option"), 7)["rerun"], True)
+        for field in (waiting, report(status="needs_user"), report(status="filled", fill="ok"),
+                      report(status="handoff", fill="failed: no option", attempts=1)):
+            out = summarize(field, 7)
+            self.assertNotIn("rerun", out)          # nothing on the page is worth another run
+            self.assertNotIn("fill_failed", out)    # a failure is a hand-off at once, never "try again"
 
     def test_set_keeps_an_approved_written_answer_as_written(self):
         from jobfill.apply import runner
@@ -141,7 +142,7 @@ class TestFiller(unittest.TestCase):
         labels = {v["label"]: v for v in report["fields"].values()}
         self.assertIn("Resume/CV*", labels)                 # file input labelled by its block, not "Attach"
         self.assertFalse([l for l in labels if not l])      # React-Select helper inputs skipped
-        self.assertNotIn("fill_failed", summary)
+        self.assertNotIn("handoff", summary)
         v = lambda sel: self.dom(page, f"() => document.querySelector('{sel}').value")
         self.assertEqual((v("#first_name"), v("#last_name"), v("#phone")), ("Jordan", "Rivera", "608-555-0142"))
         combos = self.dom(page, "() => Array.from(document.querySelectorAll('.select__single-value')).map(e => e.textContent)")
@@ -165,7 +166,7 @@ class TestFiller(unittest.TestCase):
 
     def test_lever_like_form(self):
         page, report, summary = self.run_fixture("lever_like.html", "lever", "Globex")
-        self.assertNotIn("fill_failed", summary)
+        self.assertNotIn("handoff", summary)
         get = lambda name: self.dom(page, f"() => document.querySelector('[name=\"{name}\"]').value")
         self.assertEqual(get("name"), "Jordan Rivera")
         self.assertEqual(get("location"), "Madison, Wisconsin, United States")   # autocomplete suggestion picked
@@ -243,7 +244,7 @@ class TestFiller(unittest.TestCase):
     def test_ashby_like_form(self):
         page, report, summary = self.run_fixture("ashby_like.html", "ashby", "Acme AI")
         by_label = {v["label"]: v for v in report["fields"].values()}
-        self.assertNotIn("fill_failed", summary)
+        self.assertNotIn("handoff", summary)
         # Unlabeled "autofill from resume" drop zone is ignored; the real Resume field gets the file.
         self.assertEqual([v["label"] for v in report["fields"].values() if v["kind"] == "file"], ["Resume"])
         self.assertEqual(page.evaluate("() => document.getElementById('_systemfield_resume').files.length"), 1)
@@ -263,7 +264,7 @@ class TestFiller(unittest.TestCase):
 
     def test_source_question_shapes(self):
         page, report, summary = self.run_fixture("source_like.html", "generic", "Acme")
-        self.assertNotIn("fill_failed", summary)
+        self.assertNotIn("handoff", summary)
         got = page.evaluate("""() => ({
             combined: document.querySelector('#s1').selectedOptions[0].text,
             optgroup: document.querySelector('#s2').selectedOptions[0].parentElement.label + ' / ' +
@@ -315,14 +316,12 @@ class TestFiller(unittest.TestCase):
 
         with mock.patch.object(runner, "fill", phone_widget_breaks):
             first = run(overwrite=True)
-            self.assertEqual([f["label"] for f in first["fill_failed"]], ["Phone"])   # once: retried next run
-            self.assertNotIn("handoff", first)
+            self.assertEqual([(h["label"], h["attempts"]) for h in first["handoff"]], [("Phone", 1)])   # at once
+            self.assertEqual(first["counts"]["handoff"], 1)
+            self.assertNotIn("fill_failed", first)
             second = run()
-            self.assertEqual([(h["label"], h["attempts"]) for h in second["handoff"]], [("Phone", 2)])
-            self.assertEqual(second["counts"]["handoff"], 1)
-            third = run()
-            self.assertEqual(len(tried), 2)                       # not tried a third time
-            self.assertEqual(third["handoff"][0]["why"], "not tried: failed 2 times with this value")
+            self.assertEqual(len(tried), 1)                       # tried once, never again with that value
+            self.assertEqual(second["handoff"][0]["why"], "not tried again: it failed with this value")
             rec = {f["question"]: f for f in report.build(store, app)["fields"]}
             self.assertEqual(rec["Phone"]["answered_by"], "open")
             # A corrected value is a new attempt.
